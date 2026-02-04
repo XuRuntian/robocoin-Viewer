@@ -61,4 +61,4 @@ class RerunVisualizer:
         if frame.state and 'qpos' in frame.state:
             qpos = frame.state['qpos']
             for i, val in enumerate(qpos):
-                rr.log(f"world/robot/qpos/j{i}", rr.Scalar(val))
+                rr.log(f"world/robot/qpos/j{i}", rr.Scalars(val))
