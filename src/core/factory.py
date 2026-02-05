@@ -2,7 +2,8 @@
 from pathlib import Path
 from src.adapters.hdf5_adapter import HDF5Adapter
 from src.adapters.ros_adapter import RosAdapter
-from src.adapters.unitree_adapter import UnitreeAdapter # <--- 新增
+from src.adapters.unitree_adapter import UnitreeAdapter
+from src.adapters.lerobot_adapter import LeRobotAdapter # <--- 新增
 from src.adapters.folder_adapter import FolderAdapter
 
 class ReaderFactory:
@@ -10,32 +11,28 @@ class ReaderFactory:
     def get_reader(file_path: str):
         path = Path(file_path)
         
-        # 1. 如果是文件夹
+        # 1. 文件夹判断
         if path.is_dir():
-            # 优先检查有没有 data.json，且内容包含 "unitree"
-            json_path = path / "data.json"
-            if json_path.exists():
-                # 简单读一下头，确认是不是 Unitree 格式
-                try:
-                    import json
-                    with open(json_path, 'r') as f:
-                        header = json.load(f)
-                        # 检查特征
-                        if "info" in header and header.get("info", {}).get("author") == "unitree":
-                            return UnitreeAdapter()
-                except:
-                    pass
-            
-            # 如果不是 Unitree，回退到暴力扫描模式
+            # Unitree 检查
+            if (path / "data.json").exists():
+                return UnitreeAdapter()
+            # LeRobot 检查: 有 data/*.parquet 或 meta/info.json
+            has_meta_info = (path / "meta" / "info.json").exists()
+            has_parquet = any(path.rglob("data/**/*.parquet")) or any(path.glob("*.parquet"))
+            if has_meta_info or has_parquet:
+                return LeRobotAdapter()
+            # 默认
             return FolderAdapter()
 
-        # 2. 如果是文件
+        # 2. 文件判断
         ext = path.suffix.lower()
-        if ext == '.json':
-             return UnitreeAdapter() # 直接选了 data.json 文件
+        if ext == '.parquet':
+            return LeRobotAdapter() # 直接选 parquet 文件
         elif ext in ['.h5', '.hdf5']:
             return HDF5Adapter()
         elif ext in ['.bag', '.mcap']:
             return RosAdapter()
+        elif ext == '.json':
+            return UnitreeAdapter()
         else:
             raise ValueError(f"暂不支持该格式: {ext}")
