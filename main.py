@@ -50,6 +50,41 @@ def save_report(root_dir, bad_datasets):
     except Exception as e:
         print(f"❌ 保存报告失败: {e}")
 
+def select_datasets_to_review(grouped_datasets):
+    """
+    交互式选择要审阅的数据类型
+    """
+    if len(grouped_datasets) == 1:
+        print("✅ 只发现一种数据类型，跳过选择步骤")
+        return None
+    
+    print("\\n🔍 发现多种数据格式，请选择要审阅的目标:")
+    print("  0. [全部] 按顺序审阅所有")
+    
+    type_options = list(grouped_datasets.keys())
+    for i, dtype in enumerate(type_options, 1):
+        count = len(grouped_datasets[dtype])
+        print(f"  {i}. [{dtype}] ({count} 条)")
+    
+    while True:
+        try:
+            choice = input("\\n请输入选项编号 (回车默认选0): ").strip()
+            if not choice:
+                choice = '0'
+                
+            choice_idx = int(choice)
+            
+            if choice_idx == 0:
+                return None
+                
+            if 1 <= choice_idx <= len(type_options):
+                selected_type = type_options[choice_idx-1]
+                return grouped_datasets[selected_type]
+                
+            print("❌ 无效选项！请重新输入")
+        except ValueError:
+            print("❌ 输入非数字！请重新输入")
+
 def main():
     # 1. 命令行参数定义
     parser = argparse.ArgumentParser(description="RoboCoin Viewer - 具身智能数据集清洗与预览工具")
@@ -94,7 +129,18 @@ def main():
         
     print(f"✅ 有效数据集: {len(valid_paths)} 条")
 
-    # === STEP 2: 交互审核 (Reviewer) ===
+    # === STEP 2A: 交互式类型选择 ===
+    print("\\n🎯 开始交互式类型选择...")
+    selected_paths = select_datasets_to_review(grouped_datasets)
+    
+    if selected_paths:
+        # 如果选择了特定类型，过滤有效路径
+        valid_paths = selected_paths
+        print(f"✅ 已应用类型过滤，剩余 {len(valid_paths)} 条数据")
+    else:
+        print("⚠️  使用默认选择（全部类型）")
+    
+    # === STEP 2B: 交互审核 (Reviewer) ===
     final_paths = valid_paths
     
     if not args.skip_review:
