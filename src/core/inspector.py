@@ -30,22 +30,32 @@ class DatasetInspector:
             # 如果是有效数据集（非 Unknown 且非 RawFolder）
             if dtype not in ("Unknown", "RawFolder"):
                 self.stats[dtype] += 1
-                
-                info = {
-                    "name": current_path.name,
-                    "path": str(current_path),
-                    "type": dtype,
-                    "status": "OK"
-                }
-                
-                self.report.append(info)
-                self.grouped_datasets[dtype].append(str(current_path))
+                self._add_record(current_path, dtype)
                 
                 # 跳过对该目录内容的进一步递归
                 dirs[:] = []
+                
             else:
-                # 否则继续处理子目录和文件
-                pass
+                # 如果目录本身不是数据集，则检查里面的文件 (针对 HDF5, ROS 等单文件格式)
+                for f in files:
+                    if f.startswith("."): continue
+                    
+                    file_path = current_path / f
+                    file_dtype = ReaderFactory.detect_type(file_path)
+                    
+                    if file_dtype not in ("Unknown", "RawFolder"):
+                        self.stats[file_dtype] += 1
+                        self._add_record(file_path, file_dtype)
+
+    def _add_record(self, path, dtype):
+        info = {
+            "name": path.name,
+            "path": str(path),
+            "type": dtype,
+            "status": "OK"
+        }
+        self.report.append(info)
+        self.grouped_datasets[dtype].append(str(path))
 
     def check_consistency(self) -> bool:
         """
