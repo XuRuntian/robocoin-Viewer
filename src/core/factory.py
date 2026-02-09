@@ -18,9 +18,19 @@ class ReaderFactory:
             # Unitree 特征
             if (path / "data.json").exists():
                 return "Unitree"
-            # LeRobot 特征 (包含 parquet 且有 meta 或 data 目录)
-            if list(path.glob("*.parquet")) or list(path.glob("data/*.parquet")):
+            # [Fix] LeRobot 特征增强
+            # 1. 检查标准元数据文件
+            if (path / "meta" / "info.json").exists():
                 return "LeRobot"
+            # 2. 检查 data 目录下是否有 parquet (支持递归查找 chunk-xxx)
+            # 注意：仅当 path/data 存在时才检查，避免遍历整个硬盘
+            if (path / "data").is_dir():
+                try:
+                    # 使用 rglob 查找任意深度的 parquet 文件，找到一个即止
+                    next((path / "data").rglob("*.parquet"))
+                    return "LeRobot"
+                except StopIteration:
+                    pass
             # Folder 特征 (包含图片)
             if list(path.glob("*.jpg")) or list(path.glob("*.png")) or \
                list(path.glob("colors/*.jpg")):
