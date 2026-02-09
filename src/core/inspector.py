@@ -10,37 +10,46 @@ class DatasetInspector:
         self.root = Path(root_dir)
         self.report = []
         self.stats = defaultdict(int)
-        self.valid_datasets = [] # 存储所有通过检查的数据集路径
+        self.grouped_datasets = defaultdict(list)  # 按类型存储有效数据集
         self.dominant_type = None
 
     def scan(self):
         print(f"🕵️‍♂️ 正在扫描目录: {self.root}")
-        items = sorted([p for p in self.root.iterdir()])
         
-        for p in items:
-            if p.name.startswith("."): continue
+        # 使用 os.walk 进行递归扫描
+        for root_path, dirs, files in os.walk(self.root):
+            current_path = Path(root_path)
             
-            dtype = ReaderFactory.detect_type(p)
-            self.stats[dtype] += 1
+            # 跳过隐藏目录
+            if any(part.startswith('.') for part in current_path.parts):
+                continue
+                
+            # 检查当前目录是否为有效数据集
+            dtype = ReaderFactory.detect_type(current_path)
             
-            info = {
-                "name": p.name,
-                "path": str(p),
-                "type": dtype,
-                "status": "OK" if dtype != "Unknown" else "⚠️ Unknown"
-            }
-            
-            # 简单的文件完整性检查
-            if dtype == "Unitree" and not (p / "data.json").exists():
-                info["status"] = "❌ Missing data.json"
-            
-            self.report.append(info)
-            if info["status"] == "OK":
-                self.valid_datasets.append(str(p))
+            # 如果是有效数据集（非 Unknown 且非 RawFolder）
+            if dtype not in ("Unknown", "RawFolder"):
+                self.stats[dtype] += 1
+                
+                info = {
+                    "name": current_path.name,
+                    "path": str(current_path),
+                    "type": dtype,
+                    "status": "OK"
+                }
+                
+                self.report.append(info)
+                self.grouped_datasets[dtype].append(str(current_path))
+                
+                # 跳过对该目录内容的进一步递归
+                dirs[:] = []
+            else:
+                # 否则继续处理子目录和文件
+                pass
 
     def check_consistency(self) -> bool:
         """
-        严厉的检查逻辑
+        放宽的检查逻辑 - 允许混合类型
         """
         print("\n" + "="*40)
         print("🔍 阶段一：格式一致性检查")
@@ -52,19 +61,12 @@ class DatasetInspector:
             self._print_problems()
             return False
 
-        # 2. 检查是否只有一种类型
         valid_types = [t for t in self.stats.keys() if t != "Unknown"]
-        if len(valid_types) > 1:
-            print(f"❌ 失败: 检测到多种数据格式混合: {dict(self.stats)}")
-            self._print_problems()
-            return False
-        
         if len(valid_types) == 0:
             print("❌ 失败: 目录下没有有效数据。")
             return False
 
-        self.dominant_type = valid_types[0]
-        print(f"✅ 通过: 目录下共 {len(self.valid_datasets)} 个数据，格式统一为 [{self.dominant_type}]")
+        print(f"✅ 通过: 目录下共 {sum(len(v) for v in self.grouped_datasets.values())} 个数据，包含类型: {valid_types}")
         return True
 
     def _print_problems(self):
@@ -75,4 +77,7 @@ class DatasetInspector:
             print(problems[['name', 'type', 'status']].to_markdown(index=False))
 
     def get_all_valid_paths(self):
-        return sorted(self.valid_datasets)
+        all_paths = []
+        for paths in self.grouped_datasets.values():
+            all_paths.extend(paths)
+        return sorted(all_paths)
