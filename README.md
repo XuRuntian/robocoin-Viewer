@@ -14,7 +14,7 @@
 ## 🛠️ 安装指南
 
 ### 环境要求
-- Python `3.11`（参考 `.python-version`）
+- Python `3.10`（参考 `.python-version`）
 - [Rust](https://rust-lang.org)（Rerun 依赖）
 
 ### 安装步骤
