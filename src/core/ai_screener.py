@@ -37,7 +37,7 @@ class AIScreener:
                 raise ValueError(f"无法识别文件格式: {path}")
                 
             # 加载数据集并获取中间帧
-            reader.load()
+            reader.load(path)
             mid_idx = reader.length // 2
             
             # 提取图像数据

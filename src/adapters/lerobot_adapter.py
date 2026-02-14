@@ -78,61 +78,61 @@ class LeRobotAdapter(BaseDatasetReader):
         ep_idx = int(row["episode_index"])
         frame_idx = int(row["frame_index"])
         
-            for short_name in self.image_keys:
-                # 获取对应的完整目录名 (如 observation.images.image_left)
-                full_key = self.full_feature_keys[short_name]
-                ep_idx = int(row["episode_index"])
-                frame_idx = int(row["frame_index"])
+        for short_name in self.image_keys:
+            # 获取对应的完整目录名 (如 observation.images.image_left)
+            full_key = self.full_feature_keys[short_name]
+            ep_idx = int(row["episode_index"])
+            frame_idx = int(row["frame_index"])
+            
+            # 优先尝试静态图片路径
+            if self.image_path_tpl:
+                rel_path = self.image_path_tpl.format(
+                    image_key=full_key,
+                    episode_index=ep_idx,
+                    frame_index=frame_idx
+                )
+                full_path = self.root_path / rel_path
                 
-                # 优先尝试静态图片路径
-                if self.image_path_tpl:
-                    rel_path = self.image_path_tpl.format(
+                if full_path.exists():
+                    # 使用 cv2 读取并转换颜色
+                    img = cv2.imread(str(full_path))
+                    if img is not None:
+                        images[short_name] = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                        continue  # 成功读取图片，跳过视频逻辑
+            
+            # 静态图片不存在或没有image_path模板时尝试视频路径
+            if self.video_path_tpl or not self.image_path_tpl:
+                # 构建视频路径模板
+                if self.video_path_tpl:
+                    video_path_str = self.video_path_tpl.format(
                         image_key=full_key,
-                        episode_index=ep_idx,
-                        frame_index=frame_idx
+                        ep_idx=ep_idx
                     )
-                    full_path = self.root_path / rel_path
-                    
-                    if full_path.exists():
-                        # 使用 cv2 读取并转换颜色
-                        img = cv2.imread(str(full_path))
-                        if img is not None:
-                            images[short_name] = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                            continue  # 成功读取图片，跳过视频逻辑
+                else:
+                    # 默认视频路径结构包含chunk目录
+                    video_path_str = f"videos/chunk-000/{full_key}/episode_{ep_idx:06d}.mp4"
                 
-                # 静态图片不存在或没有image_path模板时尝试视频路径
-                if self.video_path_tpl or not self.image_path_tpl:
-                    # 构建视频路径模板
-                    if self.video_path_tpl:
-                        video_path_str = self.video_path_tpl.format(
-                            image_key=full_key,
-                            ep_idx=ep_idx
-                        )
-                    else:
-                        # 默认视频路径结构包含chunk目录
-                        video_path_str = f"videos/chunk-000/{full_key}/episode_{ep_idx:06d}.mp4"
+                # 查找匹配的视频文件（考虑chunk目录结构）
+                video_files = list(self.root_path.rglob(f"**/{full_key}/*episode_{ep_idx:06d}.mp4"))
+                
+                if video_files:
+                    video_path = video_files[0]
+                    local_frame_index = frame_idx
                     
-                    # 查找匹配的视频文件（考虑chunk目录结构）
-                    video_files = list(self.root_path.rglob(f"**/{full_key}/*episode_{ep_idx:06d}.mp4"))
+                    # 缓存处理
+                    cap = self.cap_cache.get(str(video_path))
+                    if not cap:
+                        cap = cv2.VideoCapture(str(video_path))
+                        self.cap_cache[str(video_path)] = cap
                     
-                    if video_files:
-                        video_path = video_files[0]
-                        local_frame_index = frame_idx
-                        
-                        # 缓存处理
-                        cap = self.cap_cache.get(str(video_path))
-                        if not cap:
-                            cap = cv2.VideoCapture(str(video_path))
-                            self.cap_cache[str(video_path)] = cap
-                        
-                        # 设置帧位置
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, local_frame_index)
-                        ret, frame = cap.read()
-                        
-                    if ret:
-                        images[short_name] = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    else:
-                        print(f"❌ [LeRobot] 视频读取失败: {video_path} 帧 {local_frame_index}")
+                    # 设置帧位置
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, local_frame_index)
+                    ret, frame = cap.read()
+                    
+                if ret:
+                    images[short_name] = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                else:
+                    print(f"❌ [LeRobot] 视频读取失败: {video_path} 帧 {local_frame_index}")
 
         # 状态数据
         state = {
