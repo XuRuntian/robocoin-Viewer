@@ -36,8 +36,8 @@ def main():
     screener = AIScreener()
     
     # 提取并计算离群值
-    # 这里我们将阈值设得稍微敏感一点，方便在测试集中看到效果
-    suspects = screener.detect_outliers(valid_paths, outlier_ratio=0.1, similarity_threshold=0.85)
+    # 提高灵敏度，将阈值设为0.98以捕捉微小差异（如桌上多出手机）
+    suspects = screener.detect_outliers(valid_paths, outlier_ratio=0.1, similarity_threshold=0.98)
     
     # 3. 结果汇总
     print("\n" + "="*40)

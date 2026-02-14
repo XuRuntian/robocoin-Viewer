@@ -79,55 +79,118 @@ class AIScreener:
 
     def extract_embeddings(self, dataset_paths: list):
         """
-        提取数据集中间帧的CLIP特征向量
+        提取数据集多帧特征向量并取平均
         参数:
             dataset_paths: 数据集文件路径列表
         返回:
-            字典 {路径: 特征向量}
+            字典 {路径: 平均特征向量}
         """
         embeddings = {}
         total = len(dataset_paths)
         
         for i, path in enumerate(dataset_paths):
-            # 获取图像
-            image = self._get_image_from_dataset(path)
-            if image is None:
-                continue
-                
             try:
-                # 特征提取
-                inputs = self.processor(images=image, return_tensors="pt").to(self.device)
-                with torch.no_grad():
-                    outputs = self.model.get_image_features(**inputs)
+                # 获取数据集读取器
+                reader = ReaderFactory.get_reader(path)
+                if not reader:
+                    raise ValueError(f"无法识别文件格式: {path}")
+                    
+                reader.load(path)
+                length = reader.get_length()
                 
-                # 转换为numpy数组并展平
-                embeddings[path] = outputs.cpu().numpy().flatten()
+                # 定义采样点：10%, 50%, 90%
+                indices = [int(length * 0.1), int(length * 0.5), int(length * 0.9)]
+                frame_vectors = []
                 
-                # 进度显示
-                print(f"🧠 [AI 提取中] {i+1}/{total}: {os.path.basename(path)}")
+                for idx, percentage in zip(indices, ['10%', '50%', '90%']):
+                    frame = reader.get_frame(idx)
+                    
+                    # 兼容性防御：处理空帧或解码失败的情况
+                    if frame is None or not hasattr(frame, 'images') or not frame.images:
+                        print(f"⚠️ [{os.path.basename(path)}] {percentage} 帧无法提取图像")
+                        continue
+                        
+                    images = frame.images
+                    
+                    # 优先选择指定视角的图像
+                    image = None
+                    for key in ['cam_high', 'front', 'image', 'camera']:
+                        if key in images:
+                            image = images[key]
+                            break
+                    
+                    # 如果没找到指定视角，取第一个可用图像
+                    if image is None and images:
+                        image = next(iter(images.values()))
+                        
+                    # 二次防御
+                    if image is None:
+                        continue
+                    
+                    # 确保返回PIL图像对象
+                    if not isinstance(image, Image.Image):
+                        image = Image.fromarray(image)
+                    image = image.convert('RGB')
+                    
+                    # 特征提取
+                    inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+                    with torch.no_grad():
+                        v = self.model.get_image_features(**inputs).cpu().numpy().flatten()
+                        frame_vectors.append(v)
                 
+                reader.close()
+                
+                # 计算多帧平均特征向量
+                if frame_vectors:
+                    embeddings[path] = np.mean(frame_vectors, axis=0)
+                    print(f"🧠 [AI 提取中] {i+1}/{total}: {os.path.basename(path)} (成功提取 {len(frame_vectors)}/3 帧特征)")
+                else:
+                    print(f"❌ [AI 提取失败] {i+1}/{total}: {os.path.basename(path)} (无法提取任何帧特征)")
+                    
             except Exception as e:
                 print(f"❌ 特征提取失败 [{path}]: {str(e)}")
                 continue
                 
         return embeddings
 
-    def detect_outliers(self, dataset_paths: list, outlier_ratio=0.05, similarity_threshold=0.85):
+    def detect_outliers(self, dataset_paths: list, outlier_ratio=0.05, similarity_threshold=0.85, force_report_most_different=True):
         """
         离群数据检测核心方法
         参数:
             dataset_paths: 数据集文件路径列表
             outlier_ratio: 离群比例阈值（默认5%）
             similarity_threshold: 相似度绝对阈值（默认0.85）
+            force_report_most_different: 样本数少时强制报告最差异样本（默认True）
         返回:
             可疑路径列表
         """
         # 提取特征向量
         features = self.extract_embeddings(dataset_paths)
-        if len(features) < 3:
-            print("⚠️ 样本数量不足，无法进行离群检测")
+        if len(features) < 1:
+            print("⚠️ 特征提取失败，无法进行离群检测")
             return []
             
+        if len(features) < 3:
+            # 单独处理小样本情况
+            if force_report_most_different and len(features) >= 1:
+                # 计算每个样本与中心的相似度
+                feature_matrix = np.stack(list(features.values()))
+                centroid = np.mean(feature_matrix, axis=0)
+                similarities = cosine_similarity(feature_matrix, [centroid]).flatten()
+                # 强制返回最不相似的样本
+                most_different_idx = np.argmin(similarities)
+                suspects = [list(features.keys())[most_different_idx]]
+                print(f"\n🔍 小样本特殊处理（强制报告最差异样本）:")
+                print(f"📊 总样本数: {len(features)}")
+                print(f"📉 相似度阈值: {similarity_threshold}")
+                print(f"🎯 强制返回最差异样本")
+                print(f"🚨 检测到可疑样本: 1 个")
+                print(f" - {os.path.basename(suspects[0])} (偏离度: {(1 - similarities[most_different_idx])*100:.2f}%)")
+                return suspects
+            else:
+                print("⚠️ 样本数量过少，无法进行标准离群检测")
+                return []
+                
         # 特征矩阵构建
         feature_matrix = np.stack(list(features.values()))
         paths = np.array(list(features.keys()))
@@ -157,7 +220,8 @@ class AIScreener:
         print(f"📉 相似度阈值: {similarity_threshold}")
         print(f"🎯 离群比例: {outlier_ratio*100}% ({outlier_count}个)")
         print(f"🚨 检测到可疑样本: {len(suspects)} 个")
-        print("\n".join([f" - {os.path.basename(p)} (相似度: {similarities[i]:.3f})" 
+        # 显示偏离度（1 - 相似度）
+        print("\n".join([f" - {os.path.basename(p)} (偏离度: {(1 - similarities[i])*100:.2f}%)" 
                         for i, p in zip(suspect_indices[low_similarity_mask], suspects)]))
         
         return list(suspects)
