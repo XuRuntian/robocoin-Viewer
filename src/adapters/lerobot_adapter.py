@@ -3,6 +3,7 @@ import pandas as pd
 import cv2
 import numpy as np
 from pathlib import Path
+import imageio
 from typing import List, Dict, Any
 from src.core.interface import BaseDatasetReader, FrameData
 
@@ -92,24 +93,24 @@ class LeRobotAdapter(BaseDatasetReader):
                         images[short_name] = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                         img_loaded = True
             
-            # 2. 图片不存在，尝试视频抽帧 [Fix 3: 重构作用域逻辑]
+            # 2. 图片不存在，尝试视频抽帧
             if not img_loaded:
                 video_files = list(self.root_path.rglob(f"**/{full_key}/*episode_{ep_idx:06d}.mp4"))
                 if video_files:
                     video_path = video_files[0]
                     
-                    cap = self.cap_cache.get(str(video_path))
-                    if not cap:
-                        cap = cv2.VideoCapture(str(video_path))
-                        self.cap_cache[str(video_path)] = cap
-                    
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                    ret, frame = cap.read()
+                    try:
+                        reader = self.cap_cache.get(str(video_path))
+                        if not reader:
+                            # 使用 ffmpeg 插件，完美兼容 AV1 等高压缩格式
+                            reader = imageio.get_reader(str(video_path), 'ffmpeg')
+                            self.cap_cache[str(video_path)] = reader
                         
-                    if ret and frame is not None:
-                        images[short_name] = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    else:
-                        print(f"❌ [LeRobot] 视频读取失败或越界: {video_path} 帧 {frame_idx}")
+                        # get_data 直接返回当前帧的 RGB numpy array
+                        frame = reader.get_data(frame_idx)
+                        images[short_name] = frame
+                    except Exception as e:
+                        print(f"❌ [LeRobot] 视频读取失败或越界: {video_path} 帧 {frame_idx}, 报错: {str(e)}")
 
         state = {
             "action": np.array(row["action"]) if "action" in row else None,
@@ -123,7 +124,10 @@ class LeRobotAdapter(BaseDatasetReader):
         )
 
     def close(self):
-        # [Fix 4] 释放视频流资源防止内存泄露
-        for cap in self.cap_cache.values():
-            cap.release()
+        # 释放 imageio 视频流资源
+        for reader in self.cap_cache.values():
+            try:
+                reader.close()
+            except:
+                pass
         self.cap_cache.clear()

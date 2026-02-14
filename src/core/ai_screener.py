@@ -42,7 +42,14 @@ class AIScreener:
             
             # 提取图像数据
             frame = reader.get_frame(mid_idx)
-            images = frame.get('images', {})
+            
+            # 兼容性防御：处理空帧或解码失败的情况
+            if frame is None or not hasattr(frame, 'images') or not frame.images:
+                print(f"⚠️ 无法从 [{os.path.basename(path)}] 提取图像 (可能由于服务器缺少视频解码器)")
+                reader.close()
+                return None
+                
+            images = frame.images
             
             # 优先选择指定视角的图像
             image = None
@@ -50,15 +57,21 @@ class AIScreener:
                 if key in images:
                     image = images[key]
                     break
-            if not image and images:
-                image = next(iter(images.values()))  # 取第一个可用图像
+            
+            # 如果没找到指定视角，取第一个可用图像
+            if image is None and images:
+                image = next(iter(images.values()))
                 
             reader.close()
+            
+            # 二次防御
+            if image is None:
+                return None
             
             # 确保返回PIL图像对象
             if not isinstance(image, Image.Image):
                 image = Image.fromarray(image)
-            return image.convert('RGB')  # 统一转换为RGB格式
+            return image.convert('RGB')
                 
         except Exception as e:
             print(f"❌ 图像读取失败 [{path}]: {str(e)}")
