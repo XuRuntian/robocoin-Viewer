@@ -48,7 +48,7 @@ class LeRobotAdapter(BaseDatasetReader):
                 self.full_feature_keys = {}
                 
                 for key, val in features.items():
-                    if isinstance(val, dict) and val.get("dtype") == "image":
+                    if isinstance(val, dict) and val.get("dtype") in ["image", "video"]:
                         # 短名称用于 UI (如 image_left)
                         short_name = key.split(".")[-1]
                         self.image_keys.append(short_name)

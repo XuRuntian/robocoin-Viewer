@@ -38,7 +38,7 @@ class AIScreener:
                 
             # 加载数据集并获取中间帧
             reader.load(path)
-            mid_idx = reader.length // 2
+            mid_idx = reader.get_length() // 2
             
             # 提取图像数据
             frame = reader.get_frame(mid_idx)
