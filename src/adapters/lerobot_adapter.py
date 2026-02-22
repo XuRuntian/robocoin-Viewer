@@ -17,6 +17,7 @@ class LeRobotAdapter(BaseDatasetReader):
         self.image_path_tpl = ""
         self.video_path_tpl = ""  # [Fix 1] 新增属性
         self.cap_cache = {} 
+        self.version = ""
 
     def load(self, file_path: str) -> bool:
         self.root_path = Path(file_path)
@@ -39,6 +40,7 @@ class LeRobotAdapter(BaseDatasetReader):
 
             with open(meta_path, 'r') as f:
                 info = json.load(f)
+                self.version = info.get("codebase_version", "v2.1")
                 self.fps = info.get("fps", 30.0)
                 self.image_path_tpl = info.get("image_path", "")
                 self.video_path_tpl = info.get("video_path", "") # [Fix 2] 读取视频模板
