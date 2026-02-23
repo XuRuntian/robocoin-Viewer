@@ -17,6 +17,7 @@ dependencies = [
     "opencv-python>=4.13.0.90",
     "pandas>=2.3.3",
     "pillow>=12.1.0",
+    "plotly>=6.5.2",
     "pyarrow>=23.0.0",
     "pydantic>=2.12.5",
     "pynput>=1.8.1",
