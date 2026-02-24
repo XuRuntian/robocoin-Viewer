@@ -50,27 +50,45 @@ def call_qwen_vl_api(image_path: str, global_task_desc: str) -> list:
         http_client=http_client
     )
 
-    prompt_text = f"""You are an expert robotic data annotator. You are given a 3x3 image grid containing 9 sequential keyframes (labeled [1] to [9]) of a dual-arm robot performing a manipulation task.
+    prompt_text = f"""You are an expert robotic data annotator. You are given a 3x3 image grid containing 9 sequential keyframes (labeled [1] to [9]) of a robot performing a task.
 
-[Global Context & Prior Knowledge]
-The user has provided the following background information about the task:
-"{global_task_desc}"
-CRITICAL: Strictly adhere to this context. Do not hallucinate objects that are not mentioned or clearly visible. Identify the objects exactly as described above.
+    [Global Context & Prior Knowledge]
+    The user has provided the following background information about the task and the robot's morphology:
+    "{global_task_desc}"
+    CRITICAL: Strictly adhere to this context. Identify the robot type (e.g., single-arm, dual-arms, humanoid, mobile base) and objects EXACTLY as described. Do not hallucinate unrelated objects.
 
-[Granularity & Action Rules]
-You must segment the entire process into logical "Subtasks". A proper subtask MUST follow these rules:
-1. Identify the actor: Explicitly start with "Left hand", "Right hand", or "Both hands".
-2. Use standard primitive verbs: "approaches", "grasps", "lifts", "moves", "places", "releases".
-3. "Approach and Grasp" is usually grouped into ONE subtask. "Lift, Move, and Place" is usually grouped into ONE subtask.
-4. Handover between hands MUST be clearly separated.
+    [Granularity & Action Rules] - READ CAREFULLY
+    You must segment the entire process into MACRO-LEVEL "Subtasks" based on the logical phases of the task. Do NOT over-segment into micro-movements.
+    1. Identify the actor dynamically: Based on the context, explicitly state the active component (e.g., "Robotic arm", "Left gripper", "Mobile base", "Hand").
+    2. Merge related micro-actions into goal-oriented subtasks:
+    - If the task involves grasping: Merge "approaching" and "grasping" into a single subtask (e.g., "Robotic arm approaches and grasps the object"). DO NOT split them into two steps.
+    - If the task involves moving an object: Merge "lifting", "moving", and "placing/releasing" into a single subtask (e.g., "Gripper moves the object to the target and releases it").
+    - For other tasks (e.g., navigating, pushing, tool use): Group continuous actions that serve a single logical sub-goal.
+    3. Independence: If multiple arms or components are working sequentially, separate their actions into different subtasks.
 
-[Language Requirement]
-Even if the Global Context is provided in Chinese, the final `instruction` values in the JSON MUST BE TRANSLATED TO AND WRITTEN IN ENGLISH.
+    [Language Requirement]
+    Even if the Global Context is provided in Chinese, the final `instruction` values in the JSON MUST BE TRANSLATED TO AND WRITTEN IN ENGLISH.
 
-[Output Format]
-Output ONLY a strict JSON list of subtasks. Do not output any reasoning, thinking process, or explanatory text.
-The JSON must strictly contain these keys: "subtask_id" (int), "instruction" (English string), "start_image" (int, 1-9), "end_image" (int, 1-9).
-"""
+    [Output Format]
+    Output ONLY a strict JSON list of subtasks. Do not output any reasoning or explanatory text.
+    The JSON must strictly contain these keys: "subtask_id" (int), "instruction" (English string), "start_image" (int, 1-9), "end_image" (int, 1-9).
+
+    --- Example JSON Output (for a generic pick-and-place task) ---
+    [
+    {{
+        "subtask_id": 1,
+        "instruction": "Robotic arm approaches and grasps the target object",
+        "start_image": 1,
+        "end_image": 3
+    }},
+    {{
+        "subtask_id": 2,
+        "instruction": "Robotic arm moves the object and places it into the destination",
+        "start_image": 3,
+        "end_image": 6
+    }}
+    ]
+    """
 
     base64_image = encode_image_to_base64(image_path)
     print(f"📸 图片转 Base64 成功，体积大小约为: {len(base64_image) / 1024 / 1024:.2f} MB")
