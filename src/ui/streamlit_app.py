@@ -41,8 +41,16 @@ def main():
     # Tab 1: Pipeline 流水线控制中心
     # ==========================================
     with tab_pipeline:
-        st.markdown("#### 1. 配置数据源与离群检测")
+        st.markdown("#### 1. 配置数据源与全局先验 (消除 AI 幻觉)")
         data_path = st.text_input("数据集路径:", value="/home/user/test_data/hdf5")
+        
+        # 👇 新增：核心的全局描述注入框
+        global_task_desc = st.text_area(
+            "📝 设定全局任务描述 (Prior Knowledge Injection):",
+            value="The overall task is: Mobile phone storage. The robot uses its left and right hands to grasp a black phone and its handset, and places them on a black base. Do not hallucinate objects like calculators or legos. Only describe objects relevant to a phone, handset, and base.",
+            height=100,
+            help="用一两句话告诉 VLM 机器人在干什么、桌上有什么。这能极大提高 VLM 输出指令的准确率。"
+        )
         
         col_btn1, col_btn2 = st.columns([1, 4])
         if col_btn1.button("▶️ 启动端到端处理", type="primary"):
@@ -64,9 +72,13 @@ def main():
                     for ep_idx in range(process_limit):
                         st.write(f"**处理轨迹 Episode {ep_idx}/{total_eps}**")
                         
-                        # 核心：调用后端处理该条轨迹，传入 progress_callback 动态更新 UI
                         def ui_logger(msg): st.write(msg)
-                        ep_labels = pipeline.process_episode(ep_idx, progress_callback=ui_logger)
+                        # 👇 新增：将全局描述传入后端 pipeline
+                        ep_labels = pipeline.process_episode(
+                            ep_idx, 
+                            task_desc=global_task_desc, 
+                            progress_callback=ui_logger
+                        )
                         
                         # 存入大字典
                         all_annotations[str(ep_idx)] = ep_labels
@@ -84,7 +96,7 @@ def main():
                     status.update(label=f"❌ 流水线崩溃: {e}", state="error")
 
     # ==========================================
-    # Tab 2: 人工微调校验 (沿用之前的精细打磨代码)
+    # Tab 2: 人工微调校验
     # ==========================================
     with tab_align:
         if not st.session_state.get('data_loaded', False):
@@ -122,7 +134,6 @@ def main():
                     'current_frame': 0
                 })
 
-        # --- 以下完全复用之前写的联动波形图和 DataEditor 逻辑 ---
         ep_key = str(st.session_state.current_episode_idx)
         current_subtasks = st.session_state.all_annotations.get(ep_key, [])
 
