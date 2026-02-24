@@ -1,8 +1,10 @@
 # src/core/pipeline.py
 import numpy as np
-import time
+import os
 from src.core.factory import ReaderFactory
 from src.core.kinematics import KinematicScreener, align_and_segment
+from src.core.image_utils import GridImageGenerator  # 👈 引入解耦后的图像生成器
+from src.core.vlm_caller import call_qwen_vl_api     # 👈 引入你刚写的真实 API 调用模块
 
 class RoboETLPipeline:
     def __init__(self, dataset_path, robot_config):
@@ -21,7 +23,7 @@ class RoboETLPipeline:
             qpos_list.append(val if val is not None else np.zeros(6))
         return np.array(qpos_list)
 
-    def process_episode(self, episode_idx, progress_callback=None):
+    def process_episode(self, episode_idx, task_desc, progress_callback=None):
         """处理单条轨迹的完整流水线"""
         self.reader.set_episode(episode_idx)
         ep_length = self.reader.get_length()
@@ -36,19 +38,38 @@ class RoboETLPipeline:
         active_start, active_end = screener.get_active_window(qpos_data)
         indices_rel = screener.select_key_frames_kmeans(qpos_data, active_start, active_end)
         
-        # 步骤 4：生成九宫格图片并请求 VLM (此处用 Mock 代替)
-        if progress_callback: progress_callback("🌐 正在请求 VLM 大模型进行宏观拆解...")
-        time.sleep(1.5) # 模拟网络延迟
-        mock_vlm_json = [
-            {"subtask_id": 1, "instruction": "Approach phone", "start_image": 1, "end_image": 3},
-            {"subtask_id": 2, "instruction": "Grasp phone", "start_image": 3, "end_image": 5},
-            {"subtask_id": 3, "instruction": "Place on base", "start_image": 5, "end_image": 9}
-        ]
+        # 将相对索引转为绝对帧号用于抽帧
+        absolute_indices = [idx for idx in indices_rel]
+
+        # 步骤 4.1：生成九宫格图片
+        if progress_callback: progress_callback("🖼️ 正在渲染并导出 3x3 关键帧九宫格...")
+        temp_grid_path = f"temp_grid_ep{episode_idx}.jpg"
+        
+        # 极简调用，一行代码完成图片生成
+        success = GridImageGenerator.generate_3x3_grid(
+            reader=self.reader, 
+            indices=absolute_indices, 
+            output_path=temp_grid_path
+        )
+        if not success:
+            raise RuntimeError(f"Episode {episode_idx}: 九宫格图片生成失败。")
+
+        # 步骤 4.2：请求 VLM 大模型
+        if progress_callback: progress_callback("🌐 正在请求 Qwen-VL 进行宏观语义拆解...")
+        try:
+            # 传入刚才生成的图片和前端获取的 task_desc
+            vlm_json = call_qwen_vl_api(image_path=temp_grid_path, global_task_desc=task_desc)
+        except Exception as e:
+            raise RuntimeError(f"VLM API 调用失败: {e}")
+        finally:
+            # 安全清理：调用完立刻删除临时图片，防止塞满硬盘
+            if os.path.exists(temp_grid_path):
+                os.remove(temp_grid_path)
         
         # 步骤 5：微观物理边界对齐
         if progress_callback: progress_callback("⚙️ 正在执行微观物理状态缝合...")
         final_labels = align_and_segment(
-            vlm_json=mock_vlm_json,
+            vlm_json=vlm_json,
             indices_rel=indices_rel,
             qpos_data=qpos_data,
             dataset_start_offset=0,
@@ -56,7 +77,7 @@ class RoboETLPipeline:
             gripper_threshold=self.robot_config["gripper_threshold"]
         )
         
-        # 返回标准的格式
+        # 返回标准的 JSON 格式
         return [
             {
                 "subtask_id": r["subtask_id"], 
