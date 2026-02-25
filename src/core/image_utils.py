@@ -114,3 +114,44 @@ class GridImageGenerator:
             
         Image.fromarray(master_grid).save(output_path, quality=85)
         return True
+    
+    @staticmethod
+    def generate_mega_grid(reader, sample_configs, output_path):
+        """
+        [核心新增] 将多条轨迹的九宫格拼成一张大图
+        sample_configs: List of (episode_idx, indices)
+        """
+        mega_rows = []
+        for ep_idx, indices in sample_configs:
+            reader.set_episode(ep_idx)
+            combo_images = []
+            for i, idx in enumerate(indices):
+                frame = reader.get_frame(idx)
+                if frame and frame.images:
+                    # 复用你之前的九宫格单单元格生成逻辑
+                    combo_arr = GridImageGenerator.create_optimal_composite_frame(
+                        frame.images, step_num=f"Ep{ep_idx}-S{i+1}"
+                    )
+                    combo_images.append(combo_arr)
+            
+            if len(combo_images) == 9:
+                row1 = np.hstack(combo_images[0:3])
+                row2 = np.hstack(combo_images[3:6])
+                row3 = np.hstack(combo_images[6:9])
+                ep_grid = np.vstack((row1, row2, row3))
+                # 在每组九宫格之间加个白边，方便 AI 区分
+                padding = np.ones((20, ep_grid.shape[1], 3), dtype=np.uint8) * 255
+                mega_rows.append(ep_grid)
+                mega_rows.append(padding)
+
+        if mega_rows:
+            full_mega_grid = np.vstack(mega_rows[:-1]) # 去掉最后一个 padding
+            # 缩放至 VLM 友好尺寸
+            max_h = 3000 
+            if full_mega_grid.shape[0] > max_h:
+                scale = max_h / full_mega_grid.shape[0]
+                full_mega_grid = cv2.resize(full_mega_grid, (0,0), fx=scale, fy=scale)
+            
+            Image.fromarray(full_mega_grid).save(output_path, quality=80)
+            return True
+        return False

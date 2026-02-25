@@ -88,26 +88,52 @@ def find_exact_transition_frame(qpos_window, global_start_idx, gripper_dim_indic
     return global_start_idx + len(qpos_window) // 2
 
 def align_and_segment(vlm_json, indices_rel, qpos_data, dataset_start_offset, gripper_dim_indices, gripper_threshold):
+    """
+    修改点：
+    1. 强制第一帧起始为 0
+    2. 强制最后一帧结束为 total_frames - 1
+    3. 确保所有段落无缝连接
+    """
     final_annotations = []
+    total_frames = len(qpos_data)
+    num_tasks = len(vlm_json)
+
     for i, task in enumerate(vlm_json):
+        # 1. 提取九宫格对应的参考帧
         img_start_idx = task["start_image"] - 1
         img_end_idx = task["end_image"] - 1
         
         rough_frame_start = indices_rel[img_start_idx]
         rough_frame_end = indices_rel[img_end_idx]
-        window_qpos = qpos_data[rough_frame_start : rough_frame_end + 1]
         
+        # 2. 计算物理对齐的结束点
+        window_qpos = qpos_data[rough_frame_start : rough_frame_end + 1]
         exact_end = find_exact_transition_frame(
             window_qpos, rough_frame_start, gripper_dim_indices, gripper_threshold
         )
-        exact_start = rough_frame_start if i == 0 else final_annotations[-1]["exact_end_frame_relative"]
-            
+        
+        # 3. 边界强制修正
+        # 第一个子任务强制从 0 开始
+        if i == 0:
+            exact_start = 0
+        else:
+            # 后续任务紧跟上一个任务的结束
+            exact_start = final_annotations[-1]["exact_end_frame_relative"] + 1
+
+        # 最后一个子任务强制到轨迹最后
+        if i == num_tasks - 1:
+            exact_end = total_frames - 1
+        
+        # 防止因对齐算法导致的逻辑错误（如 start > end）
+        if exact_start > exact_end:
+            exact_end = exact_start
+
         final_annotations.append({
             "subtask_id": task["subtask_id"],
             "instruction": task["instruction"],
             "exact_start_frame_relative": int(exact_start),
             "exact_end_frame_relative": int(exact_end),
-            "global_start_frame": int(dataset_start_offset + exact_start),
-            "global_end_frame": int(dataset_start_offset + exact_end)
+            "start_frame": int(dataset_start_offset + exact_start),
+            "end_frame": int(dataset_start_offset + exact_end)
         })
     return final_annotations

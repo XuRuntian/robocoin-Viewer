@@ -94,31 +94,36 @@ def main():
                 else: st.error("路径不存在！")
 
         with col2:
-            if st.button("▶️ 启动端到端 AI 拆解", type="primary", use_container_width=True):
+            if st.button("▶️ 启动全局标准拆解", type="primary", width='stretch'):
                 if not os.path.exists(data_path):
                     st.error("路径不存在！")
                     return
-                with st.status("🚀 流水线执行中...", expanded=True) as status:
+                    
+                with st.status("🚀 Robo-ETL 正在执行批处理...", expanded=True) as status:
                     try:
                         pipeline = RoboETLPipeline(data_path, ROBOT_CONFIG)
+                        
+                        # 第一步：只调一次 API 拿模板
+                        st.write("🔍 **第一阶段：抽取采样点并生成全局标注标准 (Only 1 API Call)...**")
+                        master_template = pipeline.generate_global_template(global_task_desc, progress_callback=st.write)
+                        
+                        # 第二步：本地秒级对齐
+                        st.write("⚡ **第二阶段：基于标准进行本地物理对齐处理...**")
                         total_eps = pipeline.reader.get_total_episodes()
                         
-                        limit = min(3, total_eps) # 演示限制
-                        for ep_idx in range(limit):
-                            st.write(f"**处理轨迹 Episode {ep_idx}/{total_eps}**")
-                            # 👇 将之前筛出的嫌疑名单传给 pipeline
+                        # 遍历处理所有 Episode (不再调 API)
+                        for ep_idx in range(total_eps):
                             is_suspect = ep_idx in st.session_state.suspect_episodes
-                            ep_labels = pipeline.process_episode(ep_idx, global_task_desc, progress_callback=st.write, is_suspect=is_suspect)
-                            st.session_state.all_annotations[str(ep_idx)] = ep_labels
-                            st.write(f"✅ Episode {ep_idx} 处理完成！")
+                            labels = pipeline.process_with_template(ep_idx, master_template, is_suspect=is_suspect)
+                            st.session_state.all_annotations[str(ep_idx)] = labels
+                            st.write(f"✅ Episode {ep_idx} 处理完成 (本地算法对齐)")
                         
                         st.session_state.data_path = data_path
                         st.session_state.data_loaded = True
                         pipeline.close()
-                        status.update(label="🎉 处理完成！请切换至 Phase 2。", state="complete", expanded=False)
+                        status.update(label="🎉 数据集拆解完成！子任务指令已全局对齐。", state="complete", expanded=False)
                     except Exception as e:
-                        status.update(label=f"❌ 崩溃: {e}", state="error")
-
+                        status.update(label=f"❌ 流水线崩溃: {e}", state="error")
     # ==========================================
     # Tab 2: 人工微调校验
     # ==========================================
