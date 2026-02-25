@@ -1,247 +1,74 @@
+# src/core/ai_screener.py
 import torch
 import numpy as np
 from transformers import CLIPProcessor, CLIPModel
 from sklearn.metrics.pairwise import cosine_similarity
-from src.core.factory import ReaderFactory
 from PIL import Image
-import os
 
 class AIScreener:
     """
-    基于CLIP模型的AI数据筛查器
-    功能：通过提取数据集中间帧的特征向量，使用余弦相似度检测离群数据
+    基于 CLIP 模型的 AI 数据筛查器
+    功能：通过提取每条 Episode 的中间帧特征向量，检测混入的其他任务或废片
     """
-    
     def __init__(self):
-        """初始化模型、处理器和设备配置"""
-        # 自动检测计算设备
         self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-        
-        # 加载CLIP模型和处理器（使用vit-base-patch32架构）
         self.model_name = "openai/clip-vit-base-patch32"
         self.model = CLIPModel.from_pretrained(self.model_name).to(self.device)
         self.processor = CLIPProcessor.from_pretrained(self.model_name)
 
-    def _get_image_from_dataset(self, path: str):
+    def detect_outliers(self, reader, outlier_ratio=0.1, similarity_threshold=0.85):
         """
-        从数据集中提取中间帧图像
-        参数:
-            path: 数据集文件路径
-        返回:
-            PIL.Image.Image 对象或 None（失败时）
+        传入已经 load 好的 reader，返回判定为异常的 episode_idx 列表
         """
-        try:
-            # 获取数据集读取器
-            reader = ReaderFactory.get_reader(path)
-            if not reader:
-                raise ValueError(f"无法识别文件格式: {path}")
-                
-            # 加载数据集并获取中间帧
-            reader.load(path)
-            mid_idx = reader.get_length() // 2
-            
-            # 提取图像数据
-            frame = reader.get_frame(mid_idx)
-            
-            # 兼容性防御：处理空帧或解码失败的情况
-            if frame is None or not hasattr(frame, 'images') or not frame.images:
-                print(f"⚠️ 无法从 [{os.path.basename(path)}] 提取图像 (可能由于服务器缺少视频解码器)")
-                reader.close()
-                return None
-                
-            images = frame.images
-            
-            # 优先选择指定视角的图像
-            image = None
-            for key in ['cam_high', 'front', 'image', 'camera']:
-                if key in images:
-                    image = images[key]
-                    break
-            
-            # 如果没找到指定视角，取第一个可用图像
-            if image is None and images:
-                image = next(iter(images.values()))
-                
-            reader.close()
-            
-            # 二次防御
-            if image is None:
-                return None
-            
-            # 确保返回PIL图像对象
-            if not isinstance(image, Image.Image):
-                image = Image.fromarray(image)
-            return image.convert('RGB')
-                
-        except Exception as e:
-            print(f"❌ 图像读取失败 [{path}]: {str(e)}")
-            return None
-
-    def extract_embeddings(self, dataset_paths: list):
-        """
-        提取数据集多帧特征向量并取平均
-        参数:
-            dataset_paths: 数据集文件路径列表
-        返回:
-            字典 {路径: 平均特征向量}
-        """
-        embeddings = {}
-        total = len(dataset_paths)
+        features = {}
+        total_eps = reader.get_total_episodes()
         
-        for i, path in enumerate(dataset_paths):
+        # 1. 提取每条轨迹的特征
+        for ep_idx in range(total_eps):
             try:
-                # 获取数据集读取器
-                reader = ReaderFactory.get_reader(path)
-                if not reader:
-                    raise ValueError(f"无法识别文件格式: {path}")
-                    
-                reader.load(path)
+                reader.set_episode(ep_idx)
                 length = reader.get_length()
-                
-                # 定义采样点：10%, 50%, 90%
+                if length < 10:
+                    continue
+                    
+                # 采样 3 帧取平均特征
                 indices = [int(length * 0.1), int(length * 0.5), int(length * 0.9)]
                 frame_vectors = []
                 
-                for idx, percentage in zip(indices, ['10%', '50%', '90%']):
+                for idx in indices:
                     frame = reader.get_frame(idx)
+                    if frame is None or not frame.images: continue
                     
-                    # 兼容性防御：处理空帧或解码失败的情况
-                    if frame is None or not hasattr(frame, 'images') or not frame.images:
-                        print(f"⚠️ [{os.path.basename(path)}] {percentage} 帧无法提取图像")
-                        continue
-                        
-                    images = frame.images
+                    # 随便取一个存在的相机视角
+                    image_arr = next(iter(frame.images.values()))
+                    image = Image.fromarray(image_arr).convert('RGB')
                     
-                    # 优先选择指定视角的图像
-                    image = None
-                    for key in ['cam_high', 'front', 'image', 'camera']:
-                        if key in images:
-                            image = images[key]
-                            break
-                    
-                    # 如果没找到指定视角，取第一个可用图像
-                    if image is None and images:
-                        image = next(iter(images.values()))
-                        
-                    # 二次防御
-                    if image is None:
-                        continue
-                    
-                    # 确保返回PIL图像对象
-                    if not isinstance(image, Image.Image):
-                        image = Image.fromarray(image)
-                    image = image.convert('RGB')
-                    
-                    # 特征提取
                     inputs = self.processor(images=image, return_tensors="pt").to(self.device)
                     with torch.no_grad():
                         v = self.model.get_image_features(**inputs).cpu().numpy().flatten()
                         frame_vectors.append(v)
                 
-                reader.close()
-                
-                # 计算多帧平均特征向量
                 if frame_vectors:
-                    embeddings[path] = np.mean(frame_vectors, axis=0)
-                    print(f"🧠 [AI 提取中] {i+1}/{total}: {os.path.basename(path)} (成功提取 {len(frame_vectors)}/3 帧特征)")
-                else:
-                    print(f"❌ [AI 提取失败] {i+1}/{total}: {os.path.basename(path)} (无法提取任何帧特征)")
-                    
+                    features[ep_idx] = np.mean(frame_vectors, axis=0)
             except Exception as e:
-                print(f"❌ 特征提取失败 [{path}]: {str(e)}")
-                continue
+                print(f"⚠️ Episode {ep_idx} 特征提取失败: {e}")
                 
-        return embeddings
-
-    def detect_outliers(self, dataset_paths: list, outlier_ratio=0.05, similarity_threshold=0.85, force_report_most_different=True):
-        """
-        离群数据检测核心方法
-        参数:
-            dataset_paths: 数据集文件路径列表
-            outlier_ratio: 离群比例阈值（默认5%）
-            similarity_threshold: 相似度绝对阈值（默认0.85）
-            force_report_most_different: 样本数少时强制报告最差异样本（默认True）
-        返回:
-            可疑路径列表
-        """
-        # 提取特征向量
-        features = self.extract_embeddings(dataset_paths)
-        if len(features) < 1:
-            print("⚠️ 特征提取失败，无法进行离群检测")
-            return []
-            
+        # 2. 计算离群值
         if len(features) < 3:
-            # 单独处理小样本情况
-            if force_report_most_different and len(features) >= 1:
-                # 计算每个样本与中心的相似度
-                feature_matrix = np.stack(list(features.values()))
-                centroid = np.mean(feature_matrix, axis=0)
-                similarities = cosine_similarity(feature_matrix, [centroid]).flatten()
-                # 强制返回最不相似的样本
-                most_different_idx = np.argmin(similarities)
-                suspects = [list(features.keys())[most_different_idx]]
-                print(f"\n🔍 小样本特殊处理（强制报告最差异样本）:")
-                print(f"📊 总样本数: {len(features)}")
-                print(f"📉 相似度阈值: {similarity_threshold}")
-                print(f"🎯 强制返回最差异样本")
-                print(f"🚨 检测到可疑样本: 1 个")
-                print(f" - {os.path.basename(suspects[0])} (偏离度: {(1 - similarities[most_different_idx])*100:.2f}%)")
-                return suspects
-            else:
-                print("⚠️ 样本数量过少，无法进行标准离群检测")
-                return []
-                
-        # 特征矩阵构建
+            return [] # 样本太少，不做聚类剔除
+            
         feature_matrix = np.stack(list(features.values()))
-        paths = np.array(list(features.keys()))
+        ep_indices = np.array(list(features.keys()))
         
-        # 计算中心向量
         centroid = np.mean(feature_matrix, axis=0)
-        
-        # 计算余弦相似度
         similarities = cosine_similarity(feature_matrix, [centroid]).flatten()
         
-        # 按相似度排序（从小到大）
-        sorted_indices = np.argsort(similarities)
-        
-        # 离群判定逻辑：
-        # 1. 首先按相似度排序取最低的outlier_ratio比例
-        # 2. 再过滤出相似度低于threshold的样本
+        sorted_idx = np.argsort(similarities)
         outlier_count = max(1, int(len(features) * outlier_ratio))
-        suspect_indices = sorted_indices[:outlier_count]
+        
+        suspect_indices = sorted_idx[:outlier_count]
         low_similarity_mask = similarities[suspect_indices] < similarity_threshold
         
-        # 最终可疑样本
-        suspects = paths[suspect_indices][low_similarity_mask]
-        
-        # 打印检测结果
-        print(f"\n🔍 离群检测完成:")
-        print(f"📊 总样本数: {len(features)}")
-        print(f"📉 相似度阈值: {similarity_threshold}")
-        print(f"🎯 离群比例: {outlier_ratio*100}% ({outlier_count}个)")
-        print(f"🚨 检测到可疑样本: {len(suspects)} 个")
-        # 显示偏离度（1 - 相似度）
-        print("\n".join([f" - {os.path.basename(p)} (偏离度: {(1 - similarities[i])*100:.2f}%)" 
-                        for i, p in zip(suspect_indices[low_similarity_mask], suspects)]))
-        
-        return list(suspects)
-
-if __name__ == "__main__":
-    # 测试示例
-    screener = AIScreener()
-    test_paths = [
-        "data/valid/episode_0.hdf5",
-        "data/valid/episode_1.hdf5",
-        "data/valid/episode_2.hdf5",
-        "data/valid/episode_3.hdf5",
-        "data/valid/episode_4.hdf5",
-        "data/valid/episode_5.hdf5",
-        "data/valid/episode_6.hdf5",
-        "data/valid/episode_7.hdf5",
-        "data/valid/episode_8.hdf5",
-        "data/valid/episode_9.hdf5"
-    ]
-    outliers = screener.detect_outliers(test_paths)
-    print("\n✅ 最终可疑数据路径:")
-    for path in outliers:
-        print(path)
+        # 返回被判定为异常的 Episode ID 列表
+        suspect_eps = ep_indices[suspect_indices][low_similarity_mask]
+        return suspect_eps.tolist()

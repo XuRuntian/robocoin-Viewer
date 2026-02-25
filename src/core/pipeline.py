@@ -3,8 +3,8 @@ import numpy as np
 import os
 from src.core.factory import ReaderFactory
 from src.core.kinematics import KinematicScreener, align_and_segment
-from src.core.image_utils import GridImageGenerator  # 👈 引入解耦后的图像生成器
-from src.core.vlm_caller import call_qwen_vl_api     # 👈 引入你刚写的真实 API 调用模块
+from src.core.image_utils import GridImageGenerator  
+from src.core.vlm_caller import call_qwen_vl_api     
 
 class RoboETLPipeline:
     def __init__(self, dataset_path, robot_config):
@@ -23,69 +23,51 @@ class RoboETLPipeline:
             qpos_list.append(val if val is not None else np.zeros(6))
         return np.array(qpos_list)
 
-    def process_episode(self, episode_idx, task_desc, progress_callback=None):
+    def process_episode(self, episode_idx, task_desc, progress_callback=None, is_suspect=False):
         """处理单条轨迹的完整流水线"""
         self.reader.set_episode(episode_idx)
         ep_length = self.reader.get_length()
         
-        # 步骤 1：底层物理数据提取
+        # 👇 【新增核心逻辑】如果是疑似废片，直接拦截！省钱、防幻觉、防报错！
+        if is_suspect:
+            if progress_callback: progress_callback("⚠️ AI 视觉体检异常，已跳过大模型标注，标记为废片。")
+            return [{
+                "subtask_id": 1, 
+                "instruction": "⚠️ [异常废片] 动作或画面偏离主题，建议直接剔除！", 
+                "start_frame": 0, 
+                "end_frame": max(0, ep_length - 1)
+            }]
+
+        # --- 以下为正常的端到端处理逻辑 ---
         if progress_callback: progress_callback("🔄 正在提取底层运动学数据...")
         qpos_data = self.extract_qpos(ep_length)
         
-        # 步骤 2 & 3：K-Means 活跃区筛选与九宫格关键帧定位
         if progress_callback: progress_callback("🧠 正在进行 K-Means 物理特征聚类...")
         screener = KinematicScreener(fps=30)
         active_start, active_end = screener.get_active_window(qpos_data)
         indices_rel = screener.select_key_frames_kmeans(qpos_data, active_start, active_end)
-        
-        # 将相对索引转为绝对帧号用于抽帧
         absolute_indices = [idx for idx in indices_rel]
 
-        # 步骤 4.1：生成九宫格图片
         if progress_callback: progress_callback("🖼️ 正在渲染并导出 3x3 关键帧九宫格...")
         temp_grid_path = f"temp_grid_ep{episode_idx}.jpg"
-        
-        # 极简调用，一行代码完成图片生成
-        success = GridImageGenerator.generate_3x3_grid(
-            reader=self.reader, 
-            indices=absolute_indices, 
-            output_path=temp_grid_path
-        )
+        success = GridImageGenerator.generate_3x3_grid(self.reader, absolute_indices, temp_grid_path)
         if not success:
-            raise RuntimeError(f"Episode {episode_idx}: 九宫格图片生成失败。")
+            raise RuntimeError(f"Episode {episode_idx}: 九宫格生成失败。")
 
-        # 步骤 4.2：请求 VLM 大模型
         if progress_callback: progress_callback("🌐 正在请求 Qwen-VL 进行宏观语义拆解...")
         try:
-            # 传入刚才生成的图片和前端获取的 task_desc
             vlm_json = call_qwen_vl_api(image_path=temp_grid_path, global_task_desc=task_desc)
-        except Exception as e:
-            raise RuntimeError(f"VLM API 调用失败: {e}")
         finally:
-            # 安全清理：调用完立刻删除临时图片，防止塞满硬盘
-            if os.path.exists(temp_grid_path):
-                os.remove(temp_grid_path)
+            if os.path.exists(temp_grid_path): os.remove(temp_grid_path)
         
-        # 步骤 5：微观物理边界对齐
         if progress_callback: progress_callback("⚙️ 正在执行微观物理状态缝合...")
         final_labels = align_and_segment(
-            vlm_json=vlm_json,
-            indices_rel=indices_rel,
-            qpos_data=qpos_data,
-            dataset_start_offset=0,
-            gripper_dim_indices=self.robot_config["gripper_dim_indices"],
+            vlm_json=vlm_json, indices_rel=indices_rel, qpos_data=qpos_data,
+            dataset_start_offset=0, gripper_dim_indices=self.robot_config["gripper_dim_indices"],
             gripper_threshold=self.robot_config["gripper_threshold"]
         )
         
-        # 返回标准的 JSON 格式
-        return [
-            {
-                "subtask_id": r["subtask_id"], 
-                "instruction": r["instruction"], 
-                "start_frame": r["global_start_frame"], 
-                "end_frame": r["global_end_frame"]
-            } for r in final_labels
-        ]
+        return [{"subtask_id": r["subtask_id"], "instruction": r["instruction"], "start_frame": r["global_start_frame"], "end_frame": r["global_end_frame"]} for r in final_labels]
 
     def close(self):
         self.reader.close()
