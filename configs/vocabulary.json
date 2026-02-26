@@ -551,9 +551,23 @@
       "label": "本体型号",
       "type": "multiselect",
       "options": {
-        "Galaxea_R1_Lite": "银河 R1 Lite",
-        "Realman_Series": "睿尔曼系列",
-        "Linkerbot_X": "连客 Linkerbot X"
+          "Galbot_G1": "银河通用",
+          "Galaxea_R1_Lite": "星海图",
+          "Leju_Kuavo_4_LB": "乐聚",
+          "Leju_Kuavo_4_Pro": "乐聚",
+          "Agilex_Split_Aloha": "松灵合体",
+          "Agilex_Cobot_Magic": "松灵分体",
+          "Unitree_G1edu-u3": "宇树",
+          "Airbot_MMK2": "求知",
+          "Tianqing_A2": "软通天擎",
+          "Tianqing_A2D": "软通天擎",
+          "AI2_Alphabot_1s": "智平方",
+          "AI2_Alphabot_2": "智平方",
+          "Realman_RMC-AIDA-L": "睿尔曼",
+          "Realman_Rs-01": "睿尔曼",
+          "Realman_Rs-02": "睿尔曼",
+          "Agilex_Pika_Touch": "pika触觉",
+          "Robotera_Q5": "星动纪元"
       },
       "group": "硬件配置"
     },
