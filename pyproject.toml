@@ -16,6 +16,7 @@ dependencies = [
     "pyarrow>=23.0.0",
     "pydantic>=2.12.5",
     "pynput>=1.8.1",
+    "pyyaml>=6.0.3",
     "rerun-sdk>=0.26.2",
     "rosbags[mcap]>=0.11.0",
     "streamlit>=1.53.1",

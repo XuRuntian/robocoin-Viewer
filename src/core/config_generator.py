@@ -1,52 +1,25 @@
 # src/core/config_generator.py
 import os
 import uuid
+import yaml
 
 class ConfigGenerator:
     @staticmethod
     def generate_yaml_string(data: dict) -> str:
         """根据数据字典生成符合规范的 YAML 字符串"""
-        yaml_lines = []
-        yaml_lines.append(f"dataset_name: {data.get('dataset_name', '')}")
-        
-        # 自动补全 UUID
-        dataset_uuid = data.get('dataset_uuid') or str(uuid.uuid4())
-        yaml_lines.append(f"dataset_uuid: {dataset_uuid}")
-        
-        yaml_lines.append("task_instruction:")
-        for instr in data.get('task_instruction', []):
-            if instr.strip():
-                yaml_lines.append(f"  - {instr.strip()}")
-                
-        yaml_lines.append(f"env_type: {data.get('env_type', '')}")
-        
-        yaml_lines.append("scene_type:")
-        yaml_lines.append(f"  level1: {data.get('scene_level1', '')}")
-        yaml_lines.append(f"  level2: {data.get('scene_level2', '')}")
-        
-        yaml_lines.append("atomic_actions:")
-        for act in data.get('atomic_actions', []):
-            yaml_lines.append(f"  - {act}")
+        # 确保包含 UUID (把它插到 dataset_name 后面，保证 YAML 顺序美观)
+        if 'dataset_uuid' not in data or not data['dataset_uuid']:
+            # 用一个小技巧重排字典，让 UUID 紧跟 dataset_name
+            new_data = {}
+            for k, v in data.items():
+                new_data[k] = v
+                if k == 'dataset_name':
+                    new_data['dataset_uuid'] = str(uuid.uuid4())
+            data = new_data
             
-        yaml_lines.append("objects:")
-        for obj in data.get('objects', []):
-            yaml_lines.append(f"  - object_name: {obj.get('object_name', '')}")
-            yaml_lines.append(f"    color: {obj.get('color', '')}")
-            
-        yaml_lines.append(f"operation_platform_height: {data.get('operation_platform_height', 77.2)}")
-        
-        yaml_lines.append("device_model:")
-        for model in data.get('device_model', []):
-            yaml_lines.append(f"  - {model}")
-            
-        yaml_lines.append("end_effector_type:")
-        for ee in data.get('end_effector_type', []):
-            yaml_lines.append(f"  - {ee}")
-            
-        yaml_lines.append(f"task_operation_type: {data.get('task_operation_type', '')}")
-        yaml_lines.append(f"tele_type: {data.get('tele_type', '')}")
-        
-        return "\n".join(yaml_lines)
+        # 自动将字典转换为 YAML 格式
+        # sort_keys=False 保证 YAML 输出的顺序和我们在界面上填写的顺序一致
+        return yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
     @staticmethod
     def analyze_and_save(data: dict, save_dir: str, filename="dataset_config.yaml"):

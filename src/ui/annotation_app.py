@@ -21,14 +21,82 @@ st.set_page_config(page_title="RoboCoin Annotation Tool", layout="wide")
 
 @st.cache_data
 def load_vocabulary():
-    """读取外部词库文件"""
+    """读取外部词库文件 (Schema 配置)"""
     vocab_path = os.path.join(os.path.dirname(__file__), '../../configs/vocabulary.json')
     try:
         with open(vocab_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
         st.error(f"找不到词库文件: {vocab_path}")
-        return {}
+        return {"fields": []}
+
+def clean_editor_value(val):
+    """
+    从 'English (中文)' 格式中提取 'English'
+    用于清洗 data_editor 的返回值
+    """
+    if isinstance(val, str) and " (" in val and val.endswith(")"):
+        return val.split(" (")[0]
+    return val
+
+def render_field(field):
+    """配置驱动：根据 schema 定义自动渲染 Streamlit 控件并返回收集到的值"""
+    key = field["key"]
+    label = field["label"]
+    ftype = field["type"]
+    
+    if ftype == "text":
+        return st.text_input(label, placeholder=field.get("placeholder", ""))
+        
+    elif ftype == "textarea":
+        val = st.text_area(label, value=field.get("default", ""), height=100)
+        # 自动将文本框多行文字转换为 List
+        return [i.strip() for i in val.split('\n') if i.strip()] 
+        
+    elif ftype == "selectbox":
+        opts_dict = field.get("options", {})
+        opts_keys = list(opts_dict.keys())
+        fmt_func = lambda x, d=opts_dict: f"{x} ({d[x]})" if d.get(x) else x
+        return st.selectbox(label, options=opts_keys, format_func=fmt_func)
+        
+    elif ftype == "multiselect":
+        opts_dict = field.get("options", {})
+        opts_keys = list(opts_dict.keys())
+        fmt_func = lambda x, d=opts_dict: f"{x} ({d[x]})" if d.get(x) else x
+        return st.multiselect(label, options=opts_keys, format_func=fmt_func)
+        
+    elif ftype == "number":
+        return st.number_input(label, value=field.get("default", 0.0), format="%.1f")
+        
+    elif ftype == "object_table":
+        # 专门处理复杂表格
+        if f'table_{key}' not in st.session_state:
+            st.session_state[f'table_{key}'] = [{"object_name": "table", "color": "red"}]
+            
+        name_opts = field.get("name_options", {})
+        color_opts = field.get("color_options", {})
+        name_display = [f"{k} ({v})" for k, v in name_opts.items()]
+        color_display = [f"{k} ({v})" for k, v in color_opts.items()]
+        
+        edited = st.data_editor(
+            st.session_state[f'table_{key}'],
+            num_rows="dynamic",
+            column_config={
+                "object_name": st.column_config.SelectboxColumn("物品名称", options=name_display, required=True),
+                "color": st.column_config.SelectboxColumn("颜色", options=color_display, required=True)
+            },
+            width="stretch" # 替代废弃的 use_container_width
+        )
+        
+        # 自动清洗表格里的中文标签
+        cleaned = []
+        for row in edited:
+            if row.get("object_name"):
+                cleaned.append({
+                    "object_name": clean_editor_value(row["object_name"]),
+                    "color": clean_editor_value(row["color"])
+                })
+        return cleaned
 
 def setup_comparison_layout(sample_names, cameras):
     """配置 Rerun 并排对比视图的蓝图"""
@@ -118,7 +186,7 @@ def main():
     tab1, tab2 = st.tabs(["🔍 第一步：数据清洗与排查", "📝 第二步：元数据标注"])
 
     # ==========================================
-    # TAB 1: 数据清洗与预览 (复刻 main.py 逻辑)
+    # TAB 1: 数据清洗与预览
     # ==========================================
     with tab1:
         if 'grouped_datasets' not in st.session_state:
@@ -139,7 +207,6 @@ def main():
                     st.success("✅ 数据已按照类型分组移动到独立文件夹中。")
                     st.rerun()
                 
-                # 下拉选择要专注审阅的类型
                 selected_type = st.selectbox("请选择本次要处理的数据类型:", list(grouped_datasets.keys()))
                 valid_paths = grouped_datasets[selected_type]
                 st.session_state['valid_paths'] = valid_paths
@@ -159,13 +226,13 @@ def main():
                         organizer = DatasetOrganizer(target_dir)
                         quarantine_dir = organizer.quarantine_bad_data(bad_datasets, target_dir)
                         st.warning(f"🔒 发现异常任务数据！已将其隔离到: {quarantine_dir}")
-                        # 实时更新 session 中的好数据列表
                         final_paths = [p for p in valid_paths if p not in bad_datasets]
                         st.session_state['valid_paths'] = final_paths
-                        # 如果需要可以调用原有的 save_report 逻辑
                         st.success(f"🧹 剔除异常数据后，剩余有效数据: {len(final_paths)} 条")
+                        st.rerun()  # 强制刷新状态
                     else:
                         st.success("✨ 完美！未发现混入的其他任务数据。")
+                        st.rerun()
 
             # --- 步骤 3: 抽样对比预览 ---
             st.subheader("3. 抽样对比预览 (检查命名与视频内容)")
@@ -181,84 +248,51 @@ def main():
                     run_parallel_preview(sample_paths)
 
     # ==========================================
-    # TAB 2: 元数据标注 (生成 YAML)
+    # TAB 2: 元数据标注 (生成 YAML) - 完全动态驱动版
     # ==========================================
     with tab2:
         st.header("任务元数据标注")
         
+        # 1. 解析 JSON Schema，将字段按 Group 分组
+        schema_fields = vocab.get("fields", [])
+        groups = {}
+        for f in schema_fields:
+            g = f.get("group", "其他配置")
+            if g not in groups: groups[g] = []
+            groups[g].append(f)
+            
+        # 2. 动态收集表单数据
+        collected_data = {}
+        
+        # 3. 双列布局渲染 (预设固定顺序分组，确保美观)
         col1, col2 = st.columns(2)
         with col1:
-            st.subheader("基本信息")
-            dataset_name = st.text_input("数据集名称 (本体_动词_名词)", placeholder="Galaxea_R1_Lite_storage_peach")
-            task_instruction_raw = st.text_area(
-                "Task Instruction (任务指令, 每行一条)", 
-                value="place the basket in the center of the table and align it, then put the peaches into the basket.",
-                height=100
-            )
-            task_instructions = [i.strip() for i in task_instruction_raw.split('\n') if i.strip()]
-
-            st.subheader("场景设置")
-            env_type = st.selectbox("环境类型 (env_type)", vocab.get("env_type", []))
-            
-            scene_col1, scene_col2 = st.columns(2)
-            with scene_col1:
-                scene_level1 = st.selectbox("一级场景 (scene_level1)", vocab.get("scene_type_level1", []))
-            with scene_col2:
-                scene_level2 = st.selectbox("二级场景 (scene_level2)", vocab.get("scene_type_level2", []))
-
+            for g in ["基本信息", "场景设置"]:
+                if g in groups:
+                    st.subheader(g)
+                    for field in groups[g]:
+                        collected_data[field["key"]] = render_field(field)
+                        
         with col2:
-            st.subheader("动作与物品")
-            atomic_actions = st.multiselect("原子动作 (atomic_actions)", vocab.get("atomic_actions", []))
-            
-            st.markdown("**操作物品 (Objects)**")
-            if 'objects_list' not in st.session_state:
-                st.session_state['objects_list'] = [{"name": "table", "color": "red"}]
-                
-            edited_objects = st.data_editor(
-                st.session_state['objects_list'], 
-                num_rows="dynamic",
-                column_config={
-                    "name": st.column_config.SelectboxColumn("物品名称", options=vocab.get("object_names", []), required=True),
-                    "color": st.column_config.SelectboxColumn("颜色", options=vocab.get("colors", []), required=True)
-                },
-                use_container_width=True
-            )
-
-            st.subheader("硬件配置")
-            op_height = st.number_input("操作台高度 (operation_platform_height)", value=77.2, format="%.1f")
-            device_models = st.multiselect("本体型号 (device_model)", vocab.get("device_models", []))
-            end_effector_types = st.multiselect("末端执行器 (end_effector_type)", vocab.get("end_effector_types", []))
-            task_operation_type = st.selectbox("操作类型 (task_operation_type)", vocab.get("task_operation_types", []))
-            tele_type = st.selectbox("遥操作方式 (tele_type)", vocab.get("tele_types", []))
+            for g in ["动作与物品", "硬件配置", "其他配置"]:
+                if g in groups:
+                    st.subheader(g)
+                    for field in groups[g]:
+                        collected_data[field["key"]] = render_field(field)
 
         st.markdown("---")
         if st.button("💾 生成 YAML 标注文件", type="primary"):
             if 'dataset_path' not in st.session_state:
                 st.warning("请先在「数据清洗与排查」页面加载数据！")
-            elif not dataset_name:
+            elif not collected_data.get("dataset_name"):
                 st.error("请填写数据集名称！")
             else:
-                data_dict = {
-                    "dataset_name": dataset_name,
-                    "dataset_uuid": "", 
-                    "task_instruction": task_instructions,
-                    "env_type": env_type,
-                    "scene_level1": scene_level1,
-                    "scene_level2": scene_level2,
-                    "atomic_actions": atomic_actions,
-                    "objects": [{"object_name": obj["name"], "color": obj["color"]} for obj in edited_objects if obj.get("name")],
-                    "operation_platform_height": op_height,
-                    "device_model": device_models,
-                    "end_effector_type": end_effector_types,
-                    "task_operation_type": task_operation_type,
-                    "tele_type": tele_type
-                }
-                
-                save_path = ConfigGenerator.analyze_and_save(data_dict, st.session_state['dataset_path'])
+                # 传入全自动收集到的字典
+                save_path = ConfigGenerator.analyze_and_save(collected_data, st.session_state['dataset_path'])
                 st.success(f"🎉 标注文件生成成功！\n文件路径: `{save_path}`")
                 
-                with st.expander("点击查看生成的 YAML 内容"):
-                    st.code(ConfigGenerator.generate_yaml_string(data_dict), language="yaml")
+                with st.expander("点击查看生成的 YAML 内容 (纯英文)"):
+                    st.code(ConfigGenerator.generate_yaml_string(collected_data), language="yaml")
 
 if __name__ == "__main__":
     main()

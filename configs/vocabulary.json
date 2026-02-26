@@ -1,12 +1,134 @@
 {
-  "env_type": ["real_world", "simulation"],
-  "scene_type_level1": ["kitchen", "retail_store", "laboratory", "warehouse"],
-  "scene_type_level2": ["tabletop", "shelf", "sink", "floor"],
-  "atomic_actions": ["pick", "place", "push", "pull", "align", "insert", "grasp"],
-  "object_names": ["table", "basket", "peach", "apple", "box", "cube", "peg", "hole"],
-  "colors": ["red", "blue", "green", "yellow", "white", "black", "transparent", "unknown"],
-  "device_models": ["Galaxea_R1_Lite", "Realman_Series", "Linkerbot_X"],
-  "end_effector_types": ["two_finger_end_effector", "three_finger_end_effector", "suction_cup", "dexterous_hand"],
-  "task_operation_types": ["fixed_single_arm", "fixed_dual_arm", "mobile_single_arm", "mobile_dual_arm"],
-  "tele_types": ["Master Arm", "VR Controller", "Keyboard", "SpaceMouse", "Vision Tracker"]
+  "fields": [
+    {
+      "key": "dataset_name",
+      "label": "数据集名称 (本体_动词_名词)",
+      "type": "text",
+      "placeholder": "Galaxea_R1_Lite_storage_peach",
+      "group": "基本信息"
+    },
+    {
+      "key": "task_instruction",
+      "label": "Task Instruction (任务指令, 每行一条)",
+      "type": "textarea",
+      "default": "place the basket in the center of the table and align it, then put the peaches into the basket.",
+      "group": "基本信息"
+    },
+    {
+      "key": "env_type",
+      "label": "环境类型",
+      "type": "selectbox",
+      "options": {
+        "real_world": "真实世界",
+        "simulation": "仿真环境"
+      },
+      "group": "场景设置"
+    },
+    {
+      "key": "scene_level1",
+      "label": "一级场景",
+      "type": "selectbox",
+      "options": {
+        "kitchen": "厨房",
+        "retail_store": "零售店",
+        "laboratory": "实验室",
+        "warehouse": "仓库"
+      },
+      "group": "场景设置"
+    },
+    {
+      "key": "scene_level2",
+      "label": "二级场景",
+      "type": "selectbox",
+      "options": {
+        "tabletop": "桌面",
+        "shelf": "置物架",
+        "sink": "水槽",
+        "floor": "地面"
+      },
+      "group": "场景设置"
+    },
+    {
+      "key": "atomic_actions",
+      "label": "原子动作",
+      "type": "multiselect",
+      "options": {
+        "pick": "抓取 (Pick)",
+        "place": "放置 (Place)",
+        "push": "推动 (Push)",
+        "pull": "拉动 (Pull)",
+        "align": "对齐 (Align)",
+        "insert": "插入 (Insert)",
+        "grasp": "握持 (Grasp)"
+      },
+      "group": "动作与物品"
+    },
+    {
+      "key": "objects",
+      "label": "操作物品 (Objects)",
+      "type": "object_table",
+      "name_options": {
+        "table": "桌子", "basket": "篮子", "peach": "桃子", "apple": "苹果", "box": "盒子", "cube": "方块", "peg": "销钉", "hole": "孔洞"
+      },
+      "color_options": {
+        "red": "红色", "blue": "蓝色", "green": "绿色", "yellow": "黄色", "white": "白色", "black": "黑色", "transparent": "透明", "unknown": "未知"
+      },
+      "group": "动作与物品"
+    },
+    {
+      "key": "operation_platform_height",
+      "label": "操作台高度 (cm)",
+      "type": "number",
+      "default": 77.2,
+      "group": "硬件配置"
+    },
+    {
+      "key": "device_model",
+      "label": "本体型号",
+      "type": "multiselect",
+      "options": {
+        "Galaxea_R1_Lite": "银河 R1 Lite",
+        "Realman_Series": "睿尔曼系列",
+        "Linkerbot_X": "连客 Linkerbot X"
+      },
+      "group": "硬件配置"
+    },
+    {
+      "key": "end_effector_type",
+      "label": "末端执行器",
+      "type": "multiselect",
+      "options": {
+        "two_finger_end_effector": "二指夹爪",
+        "three_finger_end_effector": "三指夹爪",
+        "suction_cup": "吸盘",
+        "dexterous_hand": "灵巧手"
+      },
+      "group": "硬件配置"
+    },
+    {
+      "key": "task_operation_type",
+      "label": "操作类型",
+      "type": "selectbox",
+      "options": {
+        "fixed_single_arm": "固定基座-单臂",
+        "fixed_dual_arm": "固定基座-双臂",
+        "mobile_single_arm": "移动底盘-单臂",
+        "mobile_dual_arm": "移动底盘-双臂"
+      },
+      "group": "硬件配置"
+    },
+    {
+      "key": "tele_type",
+      "label": "遥操作方式",
+      "type": "selectbox",
+      "options": {
+        "Master Arm": "主从机械臂",
+        "VR Controller": "VR 手柄",
+        "Keyboard": "键盘控制",
+        "SpaceMouse": "3D 鼠标",
+        "Vision Tracker": "视觉捕捉"
+      },
+      "group": "硬件配置"
+    }
+  ]
 }

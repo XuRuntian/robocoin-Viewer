@@ -29,14 +29,8 @@ uv sync
 
 ## 🚀 快速入门
 ```bash
-# 基础用法
-uv run main.py /path/to/your/dataset
-
-# 跳过交互审阅
-uv run main.py /path/to/your/dataset --skip-review
-
-# 跳过最终预览
-uv run main.py /path/to/your/dataset --no-preview
+# 启动
+uv run streamlit run src/ui/annotation_app.py
 ```
 
 ### 键盘操作指南
