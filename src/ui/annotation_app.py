@@ -264,17 +264,34 @@ def main():
         # 2. 动态收集表单数据
         collected_data = {}
         
-        # 3. 双列布局渲染 (预设固定顺序分组，确保美观)
+        # 3. 双列布局渲染 (兼容预设分组与任意新增分组)
         col1, col2 = st.columns(2)
+        
+        # 预设在左列和右列的分组（保持原有布局的美观）
+        col1_groups = ["基本信息", "场景设置"]
+        col2_groups = ["动作与物品", "硬件配置", "其他配置"]
+        
+        # 自动发现 JSON 中用户新增的其他分组（例如你写的 "测试分组"）
+        all_preset_groups = set(col1_groups + col2_groups)
+        new_groups = [g for g in groups.keys() if g not in all_preset_groups]
+        
+        # 把新发现的分组均匀追加到左列和右列的后面
+        for i, g in enumerate(new_groups):
+            if i % 2 == 0:
+                col1_groups.append(g)
+            else:
+                col2_groups.append(g)
+
+        # 执行渲染
         with col1:
-            for g in ["基本信息", "场景设置"]:
+            for g in col1_groups:
                 if g in groups:
                     st.subheader(g)
                     for field in groups[g]:
                         collected_data[field["key"]] = render_field(field)
                         
         with col2:
-            for g in ["动作与物品", "硬件配置", "其他配置"]:
+            for g in col2_groups:
                 if g in groups:
                     st.subheader(g)
                     for field in groups[g]:
