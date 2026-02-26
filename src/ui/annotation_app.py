@@ -5,6 +5,7 @@ import time
 import streamlit as st
 import rerun as rr
 import rerun.blueprint as rrb
+from openai import OpenAI
 
 # 确保能找到 src
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -49,8 +50,39 @@ def render_field(field, current_data):
         return st.text_input(label, placeholder=field.get("placeholder", ""))
         
     elif ftype == "textarea":
-        val = st.text_area(label, value=field.get("default", ""), height=100)
-        # 自动将文本框多行文字转换为 List
+        # 引入 state 机制以便翻译后覆盖当前文本
+        state_key = f"textarea_{key}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = field.get("default", "")
+            
+        val = st.text_area(label, value=st.session_state[state_key], height=100)
+        st.session_state[state_key] = val
+        
+        # 👇 为任务指令专属定制的一键翻译挂载逻辑 👇
+        if key == "task_instruction":
+            if st.button("🌐 使用 Qwen 一键翻译为专业英文", type="secondary"):
+                api_key = st.session_state.get("dashscope_api_key", os.environ.get("DASHSCOPE_API_KEY", ""))
+                if not api_key:
+                    st.error("⚠️ 请先在左侧侧边栏配置阿里云 API Key！")
+                elif not val.strip():
+                    st.warning("请先输入需要翻译的指令！")
+                else:
+                    with st.spinner("正在请求大模型翻译，请稍候..."):
+                        try:
+                            # 动态注入环境变量给 LLMService 使用
+                            os.environ["DASHSCOPE_API_KEY"] = api_key 
+                            from src.core.llm_service import QwenLLMService
+                            llm = QwenLLMService()
+                            lines = [i.strip() for i in val.split('\n') if i.strip()]
+                            translated_lines = llm.translate_instructions(lines)
+                            
+                            # 覆盖 session state 并刷新页面
+                            st.session_state[state_key] = "\n".join(translated_lines)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"翻译失败: {e}")
+        # 👆 ------------------------------------------ 👆
+                            
         return [i.strip() for i in val.split('\n') if i.strip()] 
         
     elif ftype == "selectbox":
@@ -59,20 +91,16 @@ def render_field(field, current_data):
         fmt_func = lambda x, d=opts_dict: f"{x} ({d[x]})" if d.get(x) else x
         return st.selectbox(label, options=opts_keys, format_func=fmt_func)
 
-    # 👇 新增的级联下拉框 (Dependent Selectbox) 逻辑 👇
     elif ftype == "selectbox_dependent":
         parent_key = field.get("depends_on")
-        # 去当前已渲染的数据里找父级的值
         parent_val = current_data.get(parent_key) 
         
         opts_map = field.get("options_map", {})
-        # 根据父级的值，从 map 中获取对应的子选项字典。如果没找到，给个防崩的默认提示
         opts_dict = opts_map.get(parent_val, {"unknown": "请先选择上级或暂无选项"})
         
         opts_keys = list(opts_dict.keys())
         fmt_func = lambda x, d=opts_dict: f"{x} ({d[x]})" if d.get(x) and x != "unknown" else x
         return st.selectbox(label, options=opts_keys, format_func=fmt_func)
-    # 👆 --------------------------------- 👆
         
     elif ftype == "multiselect":
         opts_dict = field.get("options", {})
@@ -84,7 +112,6 @@ def render_field(field, current_data):
         return st.number_input(label, value=field.get("default", 0.0), format="%.1f")
         
     elif ftype == "object_table":
-        # 专门处理复杂表格
         if f'table_{key}' not in st.session_state:
             st.session_state[f'table_{key}'] = [{"object_name": "table", "color": "red"}]
             
@@ -100,10 +127,9 @@ def render_field(field, current_data):
                 "object_name": st.column_config.SelectboxColumn("物品名称", options=name_display, required=True),
                 "color": st.column_config.SelectboxColumn("颜色", options=color_display, required=True)
             },
-            width="stretch" # 替代废弃的 use_container_width
+            width="stretch"
         )
         
-        # 自动清洗表格里的中文标签
         cleaned = []
         for row in edited:
             if row.get("object_name"):
@@ -114,7 +140,6 @@ def render_field(field, current_data):
         return cleaned
 
 def setup_comparison_layout(sample_names, cameras):
-    """配置 Rerun 并排对比视图的蓝图"""
     columns = []
     for idx, name in enumerate(sample_names):
         cam_views = []
@@ -132,7 +157,6 @@ def setup_comparison_layout(sample_names, cameras):
     rr.send_blueprint(blueprint)
 
 def run_parallel_preview(sample_paths):
-    """执行多样本抽样预览播放逻辑"""
     temp_reader = ReaderFactory.get_reader(sample_paths[0])
     temp_reader.load(sample_paths[0])
     cameras = temp_reader.get_all_sensors()
@@ -163,7 +187,6 @@ def run_parallel_preview(sample_paths):
             if i == 0:
                 rr.log(f"preview/sample_{s_idx}/info", rr.TextDocument(f"### {os.path.basename(sample_paths[s_idx])}"))
         
-        # UI 进度条更新
         if i % 10 == 0 or i == max_len - 1:
             progress_bar.progress((i + 1) / max_len, text=f"播放进度: {i+1}/{max_len} 帧")
             
@@ -175,8 +198,21 @@ def main():
     st.title("🤖 RoboCoin 数据集清洗与标注系统")
     vocab = load_vocabulary()
     
-    # 侧边栏：全局路径配置
+    # 侧边栏：配置区
     with st.sidebar:
+        # 👇 新增：大模型参数配置区 👇
+        st.header("🔑 大模型服务配置")
+        api_key_input = st.text_input(
+            "DashScope API Key", 
+            value=os.environ.get("DASHSCOPE_API_KEY", ""),
+            type="password",
+            help="输入阿里云百炼的 API Key，用于自动翻译。如果在系统中已配置环境变量，此处会自动读取。"
+        )
+        # 将配置保存至全局 session_state 中
+        st.session_state["dashscope_api_key"] = api_key_input
+        st.markdown("---")
+        # 👆 ---------------------- 👆
+
         st.header("📂 数据源配置")
         dataset_path = st.text_input("输入数据集根路径:", value="./data/hdf5")
         
@@ -211,7 +247,6 @@ def main():
             valid_paths = st.session_state['valid_paths']
             target_dir = st.session_state['dataset_path']
             
-            # --- 步骤 1: 处理混入的不同类型数据 ---
             st.subheader("1. 数据类型检查与整理")
             if len(grouped_datasets) > 1:
                 st.warning(f"检测到 {len(grouped_datasets)} 种混合的数据类型: {list(grouped_datasets.keys())}")
@@ -228,11 +263,10 @@ def main():
             else:
                 st.success(f"✅ 数据类型一致，仅包含: {list(grouped_datasets.keys())[0]}")
 
-            # --- 步骤 2: 人工审核（剔除其他任务数据） ---
             st.subheader("2. 人工逐帧审核 (排查不同任务数据)")
             st.markdown("通过 Rerun 窗口检查是否混入了**无关任务/动作错误**的数据。")
             if st.button("🚀 启动人工审核 (Rerun)"):
-                with st.spinner("请在弹出的 Rerun 窗口中操作 (使用键盘 N/P 切换, Space 标记异常, Esc 退出)..."):
+                with st.spinner("请在弹出的 Rerun 窗口中操作 (使用键盘 N/P 切换, B 标记异常, Q/Esc 退出)..."):
                     viz = RerunVisualizer("RoboCoin_Review")
                     reviewer = DatasetReviewer(viz)
                     bad_datasets = reviewer.start_review(valid_paths)
@@ -244,12 +278,11 @@ def main():
                         final_paths = [p for p in valid_paths if p not in bad_datasets]
                         st.session_state['valid_paths'] = final_paths
                         st.success(f"🧹 剔除异常数据后，剩余有效数据: {len(final_paths)} 条")
-                        st.rerun()  # 强制刷新状态
+                        st.rerun()  
                     else:
                         st.success("✨ 完美！未发现混入的其他任务数据。")
                         st.rerun()
 
-            # --- 步骤 3: 抽样对比预览 ---
             st.subheader("3. 抽样对比预览 (检查命名与视频内容)")
             st.markdown("自动抽取 首、中、尾 3个样本进行并排播放，以便宏观确认数据与标注预期是否相符。")
             if st.button("📺 启动多视角对比预览"):
@@ -268,7 +301,6 @@ def main():
     with tab2:
         st.header("任务元数据标注")
         
-        # 1. 解析 JSON Schema，将字段按 Group 分组
         schema_fields = vocab.get("fields", [])
         groups = {}
         for f in schema_fields:
@@ -276,34 +308,26 @@ def main():
             if g not in groups: groups[g] = []
             groups[g].append(f)
             
-        # 2. 动态收集表单数据
         collected_data = {}
-        
-        # 3. 双列布局渲染 (兼容预设分组与任意新增分组)
         col1, col2 = st.columns(2)
         
-        # 预设在左列和右列的分组（保持原有布局的美观）
         col1_groups = ["基本信息", "场景设置"]
         col2_groups = ["动作与物品", "硬件配置", "其他配置"]
         
-        # 自动发现 JSON 中用户新增的其他分组（例如你写的 "测试分组"）
         all_preset_groups = set(col1_groups + col2_groups)
         new_groups = [g for g in groups.keys() if g not in all_preset_groups]
         
-        # 把新发现的分组均匀追加到左列和右列的后面
         for i, g in enumerate(new_groups):
             if i % 2 == 0:
                 col1_groups.append(g)
             else:
                 col2_groups.append(g)
 
-        # 执行渲染
         with col1:
             for g in col1_groups:
                 if g in groups:
                     st.subheader(g)
                     for field in groups[g]:
-                        # 传入 collected_data，用于级联依赖的判断
                         collected_data[field["key"]] = render_field(field, collected_data)
                         
         with col2:
@@ -311,7 +335,6 @@ def main():
                 if g in groups:
                     st.subheader(g)
                     for field in groups[g]:
-                        # 传入 collected_data，用于级联依赖的判断
                         collected_data[field["key"]] = render_field(field, collected_data)
 
         st.markdown("---")
@@ -321,7 +344,6 @@ def main():
             elif not collected_data.get("dataset_name"):
                 st.error("请填写数据集名称！")
             else:
-                # 传入全自动收集到的字典
                 save_path = ConfigGenerator.analyze_and_save(collected_data, st.session_state['dataset_path'])
                 st.success(f"🎉 标注文件生成成功！\n文件路径: `{save_path}`")
                 
