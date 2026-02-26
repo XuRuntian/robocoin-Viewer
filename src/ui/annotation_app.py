@@ -21,14 +21,16 @@ from src.ui.rerun_visualizer import RerunVisualizer
 st.set_page_config(page_title="RoboCoin Annotation Tool", layout="wide")
 
 @st.cache_data
-def load_vocabulary():
+def load_vocabulary(vocab_path):
     """读取外部词库文件 (Schema 配置)"""
-    vocab_path = os.path.join(os.path.dirname(__file__), '../../configs/vocabulary.json')
     try:
         with open(vocab_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
-        st.error(f"找不到词库文件: {vocab_path}")
+        st.error(f"❌ 找不到 Schema 配置文件: {vocab_path} (请在左侧侧边栏确认路径)")
+        return {"fields": []}
+    except json.JSONDecodeError:
+        st.error(f"❌ 配置文件格式错误，请检查 {vocab_path} 是否为合法的 JSON！")
         return {"fields": []}
 
 def clean_editor_value(val):
@@ -196,7 +198,6 @@ def run_parallel_preview(sample_paths):
 
 def main():
     st.title("🤖 RoboCoin 数据集清洗与标注系统")
-    vocab = load_vocabulary()
     
     # 侧边栏：配置区
     with st.sidebar:
@@ -213,8 +214,16 @@ def main():
         st.markdown("---")
         # 👆 ---------------------- 👆
 
-        st.header("📂 数据源配置")
+        st.header("📂 数据源与配置项")
+        
+        # 1. 新增 Schema JSON 路径输入框 (默认指向项目的 configs 目录)
+        vocab_path = st.text_input("Schema 配置文件路径 (JSON):", value="./configs/vocabulary.json")
+        
+        # 2. 数据集路径输入框
         dataset_path = st.text_input("输入数据集根路径:", value="./data/hdf5")
+        
+        # 3. 根据用户输入的路径，动态加载并渲染词库
+        vocab = load_vocabulary(vocab_path)
         
         if st.button("1. 扫描与类型检查", type="primary"):
             if not os.path.exists(dataset_path):
