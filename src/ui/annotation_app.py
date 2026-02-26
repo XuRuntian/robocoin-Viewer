@@ -39,7 +39,7 @@ def clean_editor_value(val):
         return val.split(" (")[0]
     return val
 
-def render_field(field):
+def render_field(field, current_data):
     """配置驱动：根据 schema 定义自动渲染 Streamlit 控件并返回收集到的值"""
     key = field["key"]
     label = field["label"]
@@ -58,6 +58,21 @@ def render_field(field):
         opts_keys = list(opts_dict.keys())
         fmt_func = lambda x, d=opts_dict: f"{x} ({d[x]})" if d.get(x) else x
         return st.selectbox(label, options=opts_keys, format_func=fmt_func)
+
+    # 👇 新增的级联下拉框 (Dependent Selectbox) 逻辑 👇
+    elif ftype == "selectbox_dependent":
+        parent_key = field.get("depends_on")
+        # 去当前已渲染的数据里找父级的值
+        parent_val = current_data.get(parent_key) 
+        
+        opts_map = field.get("options_map", {})
+        # 根据父级的值，从 map 中获取对应的子选项字典。如果没找到，给个防崩的默认提示
+        opts_dict = opts_map.get(parent_val, {"unknown": "请先选择上级或暂无选项"})
+        
+        opts_keys = list(opts_dict.keys())
+        fmt_func = lambda x, d=opts_dict: f"{x} ({d[x]})" if d.get(x) and x != "unknown" else x
+        return st.selectbox(label, options=opts_keys, format_func=fmt_func)
+    # 👆 --------------------------------- 👆
         
     elif ftype == "multiselect":
         opts_dict = field.get("options", {})
@@ -288,14 +303,16 @@ def main():
                 if g in groups:
                     st.subheader(g)
                     for field in groups[g]:
-                        collected_data[field["key"]] = render_field(field)
+                        # 传入 collected_data，用于级联依赖的判断
+                        collected_data[field["key"]] = render_field(field, collected_data)
                         
         with col2:
             for g in col2_groups:
                 if g in groups:
                     st.subheader(g)
                     for field in groups[g]:
-                        collected_data[field["key"]] = render_field(field)
+                        # 传入 collected_data，用于级联依赖的判断
+                        collected_data[field["key"]] = render_field(field, collected_data)
 
         st.markdown("---")
         if st.button("💾 生成 YAML 标注文件", type="primary"):
