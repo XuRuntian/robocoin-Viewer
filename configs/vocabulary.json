@@ -2,9 +2,8 @@
   "fields": [
     {
       "key": "dataset_name",
-      "label": "数据集名称 (本体_动词_名词)",
-      "type": "text",
-      "placeholder": "Galaxea_R1_Lite_storage_peach",
+      "label": "数据集名称 (自动拼接)",
+      "type": "dataset_name_builder",
       "group": "基本信息"
     },
     {

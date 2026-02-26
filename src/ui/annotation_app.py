@@ -57,7 +57,7 @@ def clean_editor_value(val):
         return val.split(" (")[0]
     return val
 
-def render_field(field, current_data):
+def render_field(field, current_data, all_fields=None):
     """配置驱动：根据 schema 定义自动渲染 Streamlit 控件并返回收集到的值"""
     key = field["key"]
     label = field["label"]
@@ -66,7 +66,33 @@ def render_field(field, current_data):
     if ftype == "text":
         return st.text_input(label, placeholder=field.get("placeholder", ""))
         
+    # 👇 新增：专门为数据集名称定制的【复合输入控件】 👇
+    elif ftype == "dataset_name_builder":
+        # 自动去全局 schema 中寻找 "device_model" 的选项
+        device_opts = {}
+        if all_fields:
+            for f in all_fields:
+                if f.get("key") == "device_model":
+                    device_opts = f.get("options", {})
+                    break
+        
+        st.markdown(f"**{label}**")
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            opts_keys = list(device_opts.keys())
+            fmt_func = lambda x, d=device_opts: f"{x} ({d[x]})" if d.get(x) else x
+            prefix = st.selectbox("1. 选择本体型号", options=opts_keys, format_func=fmt_func, key=f"prefix_{key}")
+        with col2:
+            suffix = st.text_input("2. 动词_名词 (如 pick_apple)", placeholder="pick_apple", key=f"suffix_{key}")
+            
+        # 拼接最终的名字
+        final_name = f"{prefix}_{suffix}" if suffix else prefix
+        st.caption(f"预览最终名称: `{final_name}`")
+        return final_name
+    # 👆 ----------------------------------------- 👆
+        
     elif ftype == "textarea":
+        # 引入 state 机制以便翻译后覆盖当前文本
         state_key = f"textarea_{key}"
         if state_key not in st.session_state:
             st.session_state[state_key] = field.get("default", "")
@@ -376,14 +402,14 @@ def main():
                 if g in groups:
                     st.subheader(g)
                     for field in groups[g]:
-                        collected_data[field["key"]] = render_field(field, collected_data)
+                        collected_data[field["key"]] = render_field(field, collected_data, schema_fields)
                         
         with col2:
             for g in col2_groups:
                 if g in groups:
                     st.subheader(g)
                     for field in groups[g]:
-                        collected_data[field["key"]] = render_field(field, collected_data)
+                        collected_data[field["key"]] = render_field(field, collected_data, schema_fields)
 
         st.markdown("---")
         if st.button("💾 生成 YAML 标注文件", type="primary"):
