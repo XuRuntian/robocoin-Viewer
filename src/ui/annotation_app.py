@@ -253,7 +253,7 @@ def main():
             st.info(f"当前有效数据总量: {len(st.session_state['valid_paths'])} 条")
 
     # 主界面分为两个 Tab
-    tab1, tab2 = st.tabs(["🔍 第一步：数据清洗与排查", "📝 第二步：元数据标注"])
+    tab1, tab2, tab3 = st.tabs(["🔍 第一步：数据清洗与排查", "📝 第二步：元数据标注", "⚙️ 第三步：词库维护 (Schema)"])
 
     # ==========================================
     # TAB 1: 数据清洗与预览
@@ -368,6 +368,193 @@ def main():
                 
                 with st.expander("点击查看生成的 YAML 内容 (纯英文)"):
                     st.code(ConfigGenerator.generate_yaml_string(collected_data), language="yaml")
+    # ==========================================
+    # TAB 3: 词库维护 (可视化配置)
+    # ==========================================
+    with tab3:
+        st.header("⚙️ 可视化词库与表单维护")
+        st.markdown(f"当前正在维护的 Schema: `{vocab_path}`")
+        
+        # 为了保证任何时候都能读到文件，使用绝对路径安全加载
+        abs_vocab_path = os.path.abspath(vocab_path)
+        
+        try:
+            with open(abs_vocab_path, 'r', encoding='utf-8') as f:
+                current_schema = json.load(f)
+            fields = current_schema.get("fields", [])
+        except Exception as e:
+            st.error(f"无法读取或解析 Schema 文件: {e}")
+            fields = []
+
+        if fields:
+            st.info("💡 **提示**: 直接在下方对应字段中添加或修改选项。所有的更改都会直接写入 JSON，并立刻在第二步标注界面生效。")
+            
+            # 使用 expander 把长长的表单折叠起来，每个字段一个手风琴面板
+            for idx, field in enumerate(fields):
+                field_type = field.get("type", "")
+                
+                # 我们只允许维护下拉框、多选框和嵌套下拉框的选项
+                if field_type in ["selectbox", "multiselect"]:
+                    with st.expander(f"📝 字段: {field['label']} ({field['key']})"):
+                        st.markdown(f"**所属分组:** {field.get('group', '未分组')} | **类型:** {field_type}")
+                        
+                        options = field.get("options", {})
+                        
+                        # 1. 显示现有选项并提供删除功能
+                        if options:
+                            st.markdown("##### 现有选项")
+                            # 为了美观，使用列布局展示
+                            opt_cols = st.columns(3)
+                            for i, (opt_key, opt_label) in enumerate(list(options.items())):
+                                col = opt_cols[i % 3]
+                                col.markdown(f"`{opt_key}` - {opt_label}")
+                                # 给一个微小的删除按钮
+                                if col.button(f"🗑️ 删除", key=f"del_{field['key']}_{opt_key}", help=f"删除选项 {opt_key}"):
+                                    del current_schema["fields"][idx]["options"][opt_key]
+                                    with open(abs_vocab_path, 'w', encoding='utf-8') as f:
+                                        json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                    load_vocabulary.clear()
+                                    st.rerun()
+                        else:
+                            st.caption("暂无选项")
+                            
+                        # 2. 提供新增选项的输入框
+                        st.markdown("##### ➕ 新增选项")
+                        new_col1, new_col2, new_col3 = st.columns([2, 2, 1])
+                        with new_col1:
+                            new_opt_key = st.text_input("英文 Key (如 apple)", key=f"new_key_{field['key']}")
+                        with new_col2:
+                            new_opt_label = st.text_input("中文显示名 (如 苹果)", key=f"new_label_{field['key']}")
+                        with new_col3:
+                            st.markdown("<br>", unsafe_allow_html=True) # 占位符对齐按钮
+                            if st.button("添加", key=f"add_{field['key']}", use_container_width=True):
+                                if not new_opt_key.strip() or not new_opt_label.strip():
+                                    st.warning("Key 和显示名都不能为空！")
+                                elif new_opt_key in options:
+                                    st.warning(f"Key '{new_opt_key}' 已存在！")
+                                else:
+                                    # 写入字典
+                                    if "options" not in current_schema["fields"][idx]:
+                                        current_schema["fields"][idx]["options"] = {}
+                                    current_schema["fields"][idx]["options"][new_opt_key.strip()] = new_opt_label.strip()
+                                    
+                                    # 保存文件并强制热重载
+                                    with open(abs_vocab_path, 'w', encoding='utf-8') as f:
+                                        json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                    load_vocabulary.clear()
+                                    st.success(f"已添加选项: {new_opt_label}")
+                                    st.rerun()
+
+                elif field_type == "selectbox_dependent":
+                    with st.expander(f"🔗 级联字段: {field['label']} (依赖于 {field.get('depends_on', '未知')})"):
+                        options_map = field.get("options_map", {})
+                        
+                        st.markdown("##### 现有选项映射")
+                        for parent_val, sub_options in options_map.items():
+                            st.markdown(f"**当父级选择 `{parent_val}` 时：**")
+                            # 展示子选项
+                            sub_cols = st.columns(3)
+                            for i, (opt_key, opt_label) in enumerate(list(sub_options.items())):
+                                col = sub_cols[i % 3]
+                                col.markdown(f"`{opt_key}` - {opt_label}")
+                                if col.button("🗑️ 删除", key=f"del_sub_{field['key']}_{parent_val}_{opt_key}"):
+                                    del current_schema["fields"][idx]["options_map"][parent_val][opt_key]
+                                    with open(abs_vocab_path, 'w', encoding='utf-8') as f:
+                                        json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                    load_vocabulary.clear()
+                                    st.rerun()
+                                    
+                        st.markdown("---")
+                        st.markdown("##### ➕ 为父级新增选项")
+                        new_col1, new_col2, new_col3, new_col4 = st.columns([2, 2, 2, 1])
+                        
+                        # 获取所有可能的父级选项供用户选择
+                        all_parent_keys = list(options_map.keys()) if options_map else ["unknown"]
+                        
+                        with new_col1:
+                            target_parent = st.selectbox("选择父级条件", all_parent_keys, key=f"target_parent_{field['key']}")
+                        with new_col2:
+                            new_sub_key = st.text_input("子选项英文 Key", key=f"new_sub_key_{field['key']}")
+                        with new_col3:
+                            new_sub_label = st.text_input("子选项中文名", key=f"new_sub_label_{field['key']}")
+                        with new_col4:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            if st.button("添加", key=f"add_sub_{field['key']}", use_container_width=True):
+                                if not new_sub_key.strip() or not new_sub_label.strip():
+                                    st.warning("输入不能为空！")
+                                else:
+                                    if "options_map" not in current_schema["fields"][idx]:
+                                        current_schema["fields"][idx]["options_map"] = {}
+                                    if target_parent not in current_schema["fields"][idx]["options_map"]:
+                                        current_schema["fields"][idx]["options_map"][target_parent] = {}
+                                        
+                                    current_schema["fields"][idx]["options_map"][target_parent][new_sub_key.strip()] = new_sub_label.strip()
+                                    
+                                    with open(abs_vocab_path, 'w', encoding='utf-8') as f:
+                                        json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                    load_vocabulary.clear()
+                                    st.success(f"已添加到 {target_parent} 下")
+                                    st.rerun()
+                
+                elif field_type == "object_table":
+                    with st.expander(f"📊 表格选项维护: {field['label']} ({field['key']})"):
+                        st.markdown("注意：这里维护的是表格列的下拉菜单（物品名 和 颜色）。")
+                        
+                        # 维护物品名称 (name_options)
+                        st.markdown("##### 物品名称池 (name_options)")
+                        name_opts = field.get("name_options", {})
+                        n_cols = st.columns(3)
+                        for i, (opt_key, opt_label) in enumerate(list(name_opts.items())):
+                            col = n_cols[i % 3]
+                            col.markdown(f"`{opt_key}` - {opt_label}")
+                            if col.button("🗑️ 删除", key=f"del_name_{field['key']}_{opt_key}"):
+                                del current_schema["fields"][idx]["name_options"][opt_key]
+                                with open(abs_vocab_path, 'w', encoding='utf-8') as f:
+                                    json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                load_vocabulary.clear()
+                                st.rerun()
+                                
+                        c1, c2, c3 = st.columns([2, 2, 1])
+                        with c1: n_key = st.text_input("英文物品名 (如 cup)", key=f"new_n_key_{field['key']}")
+                        with c2: n_label = st.text_input("中文显示名 (如 杯子)", key=f"new_n_label_{field['key']}")
+                        with c3:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            if st.button("添加物品", key=f"add_n_{field['key']}", use_container_width=True):
+                                if n_key.strip() and n_label.strip():
+                                    current_schema["fields"][idx]["name_options"][n_key.strip()] = n_label.strip()
+                                    with open(abs_vocab_path, 'w', encoding='utf-8') as f:
+                                        json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                    load_vocabulary.clear()
+                                    st.rerun()
+                                    
+                        st.markdown("---")
+                        # 维护颜色 (color_options) 逻辑雷同，此处简写：
+                        st.markdown("##### 颜色池 (color_options)")
+                        # ... 可以复用上面的展示和添加逻辑，这里提供核心框架让系统能跑通 ...
+                        color_opts = field.get("color_options", {})
+                        co_cols = st.columns(3)
+                        for i, (opt_key, opt_label) in enumerate(list(color_opts.items())):
+                            col = co_cols[i % 3]
+                            col.markdown(f"`{opt_key}` - {opt_label}")
+                            if col.button("🗑️ 删除", key=f"del_color_{field['key']}_{opt_key}"):
+                                del current_schema["fields"][idx]["color_options"][opt_key]
+                                with open(abs_vocab_path, 'w', encoding='utf-8') as f:
+                                    json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                load_vocabulary.clear()
+                                st.rerun()
+                                
+                        c1, c2, c3 = st.columns([2, 2, 1])
+                        with c1: c_key = st.text_input("英文颜色 (如 red)", key=f"new_c_key_{field['key']}")
+                        with c2: c_label = st.text_input("中文显示 (如 红色)", key=f"new_c_label_{field['key']}")
+                        with c3:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            if st.button("添加颜色", key=f"add_c_{field['key']}", use_container_width=True):
+                                if c_key.strip() and c_label.strip():
+                                    current_schema["fields"][idx]["color_options"][c_key.strip()] = c_label.strip()
+                                    with open(abs_vocab_path, 'w', encoding='utf-8') as f:
+                                        json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                    load_vocabulary.clear()
+                                    st.rerun()
 
 if __name__ == "__main__":
     main()

@@ -25,190 +25,190 @@
       "group": "场景设置"
     },
     {
-        "key": "scene_level1",
-        "label": "一级场景",
-        "type": "selectbox",
-        "options": {
-            "Retail": "商超零售",
-            "Catering": "餐饮服务",
-            "Medical": "医疗健康",
-            "Education": "教育培训",
-            "Household": "家庭生活",
-            "Industry": "工业制造",
-            "Office": "办公空间",
-            "Logistics": "仓储物流",
-            "Farm": "农业场景",
-            "Hotel": "酒店",
-            "Public": "公共空间",
-            "Fitness": "运动健身",
-            "Service": "商业服务",
-            "Pet": "宠物服务",
-            "Lab": "科研实验",
-            "Special": "特殊场景",
-            "Other": "其他"
-        },
-        "group": "场景设置"
+      "key": "scene_level1",
+      "label": "一级场景",
+      "type": "selectbox",
+      "options": {
+        "Retail": "商超零售",
+        "Catering": "餐饮服务",
+        "Medical": "医疗健康",
+        "Education": "教育培训",
+        "Household": "家庭生活",
+        "Industry": "工业制造",
+        "Office": "办公空间",
+        "Logistics": "仓储物流",
+        "Farm": "农业场景",
+        "Hotel": "酒店",
+        "Public": "公共空间",
+        "Fitness": "运动健身",
+        "Service": "商业服务",
+        "Pet": "宠物服务",
+        "Lab": "科研实验",
+        "Special": "特殊场景",
+        "Other": "其他"
+      },
+      "group": "场景设置"
     },
     {
-        "key": "scene_level2",
-        "label": "二级场景",
-        "type": "selectbox_dependent",
-        "depends_on": "scene_level1",
-        "options_map": {
-            "Retail": {
-                "Supermarket": "超市",
-                "Convenience Service Station": "便民服务站",
-                "24-Hour Convenience Store": "24小时便利店",
-                "Fresh Food Supermarket": "生鲜超市",
-                "Unmanned Supermarket": "无人超市",
-                "Convenience Store": "便利店"
-            },
-            "Catering": {
-                "Restaurant": "餐厅",
-                "Cafe": "咖啡厅",
-                "Milk Tea Shop": "奶茶店",
-                "Fast Food Restaurant": "快餐店",
-                "Dessert Shop": "甜品店",
-                "Canteen": "食堂"
-            },
-            "Medical": {
-                "Hospital": "医院",
-                "Pharmacy": "药店",
-                "Clinic": "诊所",
-                "Physical Examination Center": "体检中心",
-                "Rehabilitation Center": "康复中心"
-            },
-            "Education": {
-                "School": "学校",
-                "Kindergarten": "幼儿园",
-                "Vocational Training Institute": "职业培训机构",
-                "After-School Tutoring Center": "课外辅导机构",
-                "Primary/Middle School": "小学/中学",
-                "University": "大学"
-            },
-            "Household": {
-                "Kitchen": "厨房",
-                "Bathroom": "浴室",
-                "Living Room": "客厅",
-                "Bedroom": "卧室",
-                "Study Room": "书房",
-                "Dining Room": "家庭餐厅",
-                "Balcony": "阳台",
-                "Garage": "车库"
-            },
-            "Industry": {
-                "Factory": "工厂",
-                "Production Line": "生产线",
-                "Warehouse Area": "仓储区",
-                "Assembly Workshop": "装配车间",
-                "Inspection Area": "检测区"
-            },
-            "Office": {
-                "Meeting Room": "会议室",
-                "Office": "办公室",
-                "Open Work Area": "开放工位区",
-                "Reception Area": "接待区",
-                "Printing Area": "文印区"
-            },
-            "Logistics": {
-                "Warehouse": "仓库",
-                "Courier Station": "快递驿站",
-                "Sorting Center": "分拣中心",
-                "Logistics Transit Station": "物流中转站",
-                "Cold Chain Warehouse": "冷链仓库"
-            },
-            "Farm": {
-                "Farm": "农场",
-                "Orchard": "果园",
-                "Greenhouse": "温室大棚",
-                "Farmland": "农田",
-                "Livestock Farm": "畜牧场"
-            },
-            "Hotel": {
-                "Hotel Guest Room": "酒店客房",
-                "Hotel Lobby": "酒店大堂",
-                "Hotel Restaurant": "酒店餐厅",
-                "Hotel Corridor": "酒店走廊"
-            },
-            "Public": {
-                "Leisure Plaza": "休闲广场",
-                "Park": "公园",
-                "Community Center": "社区活动中心",
-                "Library": "图书馆",
-                "Gymnasium": "体育馆"
-            },
-            "Fitness": {
-                "Gym": "健身房",
-                "Yoga Studio": "瑜伽室",
-                "Sports Field": "运动场"
-            },
-            "Service": {
-                "Bank Branch": "银行网点",
-                "Service Hall": "营业厅",
-                "Hair Salon": "理发店",
-                "Laundry": "洗衣店"
-            },
-            "Pet": {
-                "Pet Store": "宠物店",
-                "Pet Hospital": "宠物医院",
-                "Pet Grooming Shop": "宠物美容店"
-            },
-            "Lab": {
-                "Laboratory": "实验室",
-                "Clean Lab": "洁净实验室",
-                "Test Room": "测试间"
-            },
-            "Special": {
-                "Elevator Hall": "电梯间",
-                "Corridor": "走廊",
-                "Stairwell": "楼梯间",
-                "Underground Parking": "地下车库"
-            },
-            "Other": {
-                "Unclassified": "未分类"
-            }
+      "key": "scene_level2",
+      "label": "二级场景",
+      "type": "selectbox_dependent",
+      "depends_on": "scene_level1",
+      "options_map": {
+        "Retail": {
+          "Supermarket": "超市",
+          "Convenience Service Station": "便民服务站",
+          "24-Hour Convenience Store": "24小时便利店",
+          "Fresh Food Supermarket": "生鲜超市",
+          "Unmanned Supermarket": "无人超市",
+          "Convenience Store": "便利店"
         },
-        "group": "场景设置"
+        "Catering": {
+          "Restaurant": "餐厅",
+          "Cafe": "咖啡厅",
+          "Milk Tea Shop": "奶茶店",
+          "Fast Food Restaurant": "快餐店",
+          "Dessert Shop": "甜品店",
+          "Canteen": "食堂"
+        },
+        "Medical": {
+          "Hospital": "医院",
+          "Pharmacy": "药店",
+          "Clinic": "诊所",
+          "Physical Examination Center": "体检中心",
+          "Rehabilitation Center": "康复中心"
+        },
+        "Education": {
+          "School": "学校",
+          "Kindergarten": "幼儿园",
+          "Vocational Training Institute": "职业培训机构",
+          "After-School Tutoring Center": "课外辅导机构",
+          "Primary/Middle School": "小学/中学",
+          "University": "大学"
+        },
+        "Household": {
+          "Kitchen": "厨房",
+          "Bathroom": "浴室",
+          "Living Room": "客厅",
+          "Bedroom": "卧室",
+          "Study Room": "书房",
+          "Dining Room": "家庭餐厅",
+          "Balcony": "阳台",
+          "Garage": "车库"
+        },
+        "Industry": {
+          "Factory": "工厂",
+          "Production Line": "生产线",
+          "Warehouse Area": "仓储区",
+          "Assembly Workshop": "装配车间",
+          "Inspection Area": "检测区"
+        },
+        "Office": {
+          "Meeting Room": "会议室",
+          "Office": "办公室",
+          "Open Work Area": "开放工位区",
+          "Reception Area": "接待区",
+          "Printing Area": "文印区"
+        },
+        "Logistics": {
+          "Warehouse": "仓库",
+          "Courier Station": "快递驿站",
+          "Sorting Center": "分拣中心",
+          "Logistics Transit Station": "物流中转站",
+          "Cold Chain Warehouse": "冷链仓库"
+        },
+        "Farm": {
+          "Farm": "农场",
+          "Orchard": "果园",
+          "Greenhouse": "温室大棚",
+          "Farmland": "农田",
+          "Livestock Farm": "畜牧场"
+        },
+        "Hotel": {
+          "Hotel Guest Room": "酒店客房",
+          "Hotel Lobby": "酒店大堂",
+          "Hotel Restaurant": "酒店餐厅",
+          "Hotel Corridor": "酒店走廊"
+        },
+        "Public": {
+          "Leisure Plaza": "休闲广场",
+          "Park": "公园",
+          "Community Center": "社区活动中心",
+          "Library": "图书馆",
+          "Gymnasium": "体育馆"
+        },
+        "Fitness": {
+          "Gym": "健身房",
+          "Yoga Studio": "瑜伽室",
+          "Sports Field": "运动场"
+        },
+        "Service": {
+          "Bank Branch": "银行网点",
+          "Service Hall": "营业厅",
+          "Hair Salon": "理发店",
+          "Laundry": "洗衣店"
+        },
+        "Pet": {
+          "Pet Store": "宠物店",
+          "Pet Hospital": "宠物医院",
+          "Pet Grooming Shop": "宠物美容店"
+        },
+        "Lab": {
+          "Laboratory": "实验室",
+          "Clean Lab": "洁净实验室",
+          "Test Room": "测试间"
+        },
+        "Special": {
+          "Elevator Hall": "电梯间",
+          "Corridor": "走廊",
+          "Stairwell": "楼梯间",
+          "Underground Parking": "地下车库"
+        },
+        "Other": {
+          "Unclassified": "未分类"
+        }
+      },
+      "group": "场景设置"
     },
     {
       "key": "atomic_actions",
       "label": "原子动作",
       "type": "multiselect",
       "options": {
-          "move": "移动 (Move)",
-          "grasp": "抓取 (Grasp)",
-          "release": "释放 (Release)",
-          "place": "放置 (Place)",
-          "press": "按压 (Press)",
-          "rotate": "旋转 (Rotate)",
-          "push": "推动 (Push)",
-          "pull": "拉动 (Pull)",
-          "flip": "翻转 (Flip)",
-          "cut": "切割 (Cut)",
-          "insert": "插入 (Insert)",
-          "pull out": "拔出 (Pull Out)",
-          "stir": "搅拌 (Stir)",
-          "wipe": "擦拭 (Wipe)",
-          "fold": "折叠 (Fold)",
-          "open": "打开 (Open)",
-          "close": "关闭 (Close)",
-          "align": "对齐 (Align)",
-          "pour": "倾倒 (Pour)",
-          "measure": "测量 (Measure)",
-          "sort": "分类 (Sort)",
-          "pick": "拾取 (Pick)",
-          "lower": "降低 (Lower)",
-          "lift": "提升 (Lift)",
-          "pass": "传递 (Pass)",
-          "handover": "交接 (Handover)",
-          "pull apart": "拆开 (Pull Apart)",
-          "push together": "推合 (Push Together)",
-          "unfold": "展开 (Unfold)",
-          "uncap": "拔盖 (Uncap)",
-          "take out": "取出 (Take Out)",
-          "pinch": "夹取 (Pinch)",
-          "clip": "夹取 (Clip)",
-          "press button": "按下按钮 (Press Button)"
+        "move": "移动 (Move)",
+        "grasp": "抓取 (Grasp)",
+        "release": "释放 (Release)",
+        "place": "放置 (Place)",
+        "press": "按压 (Press)",
+        "rotate": "旋转 (Rotate)",
+        "push": "推动 (Push)",
+        "pull": "拉动 (Pull)",
+        "flip": "翻转 (Flip)",
+        "cut": "切割 (Cut)",
+        "insert": "插入 (Insert)",
+        "pull out": "拔出 (Pull Out)",
+        "stir": "搅拌 (Stir)",
+        "wipe": "擦拭 (Wipe)",
+        "fold": "折叠 (Fold)",
+        "open": "打开 (Open)",
+        "close": "关闭 (Close)",
+        "align": "对齐 (Align)",
+        "pour": "倾倒 (Pour)",
+        "measure": "测量 (Measure)",
+        "sort": "分类 (Sort)",
+        "pick": "拾取 (Pick)",
+        "lower": "降低 (Lower)",
+        "lift": "提升 (Lift)",
+        "pass": "传递 (Pass)",
+        "handover": "交接 (Handover)",
+        "pull apart": "拆开 (Pull Apart)",
+        "push together": "推合 (Push Together)",
+        "unfold": "展开 (Unfold)",
+        "uncap": "拔盖 (Uncap)",
+        "take out": "取出 (Take Out)",
+        "pinch": "夹取 (Pinch)",
+        "clip": "夹取 (Clip)",
+        "press button": "按下按钮 (Press Button)"
       },
       "group": "动作与物品"
     },
@@ -312,7 +312,6 @@
         "deli water-based marker": "水性标记笔",
         "pencil": "铅笔",
         "ballpoint pen": "圆珠笔",
-        "fountain pen": "钢笔",
         "pen cap": "笔帽",
         "eraser": "橡皮擦",
         "magnifying glass": "放大镜",
@@ -390,7 +389,6 @@
         "cauliflower": "花椰菜",
         "corn": "玉米",
         "chinese cabbage": "大白菜",
-        "baby bok choy": "小白菜",
         "chili pepper": "辣椒",
         "garlic": "大蒜",
         "onion": "洋葱",
@@ -490,7 +488,6 @@
         "dropper": "滴管",
         "test tube": "试管",
         "test tube brush": "试管刷",
-        "test tube rack": "试管架",
         "measuring cup": "量杯",
         "beaker": "烧杯",
         "grains of sand": "沙粒",
@@ -551,23 +548,23 @@
       "label": "本体型号",
       "type": "multiselect",
       "options": {
-          "Galbot_G1": "银河通用",
-          "Galaxea_R1_Lite": "星海图",
-          "Leju_Kuavo_4_LB": "乐聚",
-          "Leju_Kuavo_4_Pro": "乐聚",
-          "Agilex_Split_Aloha": "松灵合体",
-          "Agilex_Cobot_Magic": "松灵分体",
-          "Unitree_G1edu-u3": "宇树",
-          "Airbot_MMK2": "求知",
-          "Tianqing_A2": "软通天擎",
-          "Tianqing_A2D": "软通天擎",
-          "AI2_Alphabot_1s": "智平方",
-          "AI2_Alphabot_2": "智平方",
-          "Realman_RMC-AIDA-L": "睿尔曼",
-          "Realman_Rs-01": "睿尔曼",
-          "Realman_Rs-02": "睿尔曼",
-          "Agilex_Pika_Touch": "pika触觉",
-          "Robotera_Q5": "星动纪元"
+        "Galbot_G1": "银河通用",
+        "Galaxea_R1_Lite": "星海图",
+        "Leju_Kuavo_4_LB": "乐聚",
+        "Leju_Kuavo_4_Pro": "乐聚",
+        "Agilex_Split_Aloha": "松灵合体",
+        "Agilex_Cobot_Magic": "松灵分体",
+        "Unitree_G1edu-u3": "宇树",
+        "Airbot_MMK2": "求知",
+        "Tianqing_A2": "软通天擎",
+        "Tianqing_A2D": "软通天擎",
+        "AI2_Alphabot_1s": "智平方",
+        "AI2_Alphabot_2": "智平方",
+        "Realman_RMC-AIDA-L": "睿尔曼",
+        "Realman_Rs-01": "睿尔曼",
+        "Realman_Rs-02": "睿尔曼",
+        "Agilex_Pika_Touch": "pika触觉",
+        "Robotera_Q5": "星动纪元"
       },
       "group": "硬件配置"
     },
@@ -614,6 +611,5 @@
       },
       "group": "硬件配置"
     }
-      
   ]
 }
