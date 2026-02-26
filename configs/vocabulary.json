@@ -576,10 +576,9 @@
       "label": "末端执行器",
       "type": "multiselect",
       "options": {
-        "two_finger_end_effector": "二指夹爪",
-        "three_finger_end_effector": "三指夹爪",
-        "suction_cup": "吸盘",
-        "dexterous_hand": "灵巧手"
+        "two_finger_end_effector": "各类二指夹持类末端",
+        "three_finger_end_effector": "三指自适应夹持类末端",
+        "five_finger_end_effector": "五指夹持 / 操作类末端"
       },
       "group": "硬件配置"
     },
