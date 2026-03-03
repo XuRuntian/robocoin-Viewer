@@ -10,15 +10,9 @@ class DatasetOrganizer:
     def sort_by_type(self, grouped_datasets: dict, target_root: str) -> dict:
         """
         将数据集按类型分类并移动到目标目录下的相应文件夹中
-        
-        Args:
-            grouped_datasets: 包含不同类型数据集路径的字典
-            target_root: 目标根目录路径
-            
-        Returns:
-            包含移动后新路径的字典
         """
-        target_root = Path(target_root)
+        # 统一转为绝对路径，方便精确比对
+        target_root = Path(target_root).resolve()
         new_paths = {}
         
         for dtype, paths in grouped_datasets.items():
@@ -31,7 +25,20 @@ class DatasetOrganizer:
             
             new_type_paths = []
             for src_path in paths:
-                src_path = Path(src_path)
+                src_path = Path(src_path).resolve()
+                
+                # 🚀 修复点 1：防止将根目录移动到自身的子目录中
+                if src_path == target_root:
+                    print(f"⚠️ 无法移动根目录自身，跳过: {src_path}")
+                    # 不移动，但依然保留在有效路径列表中
+                    new_type_paths.append(str(src_path))
+                    continue
+                
+                # 🚀 修复点 2：如果该文件夹已经被放进了正确的归类文件夹中，则跳过
+                if src_path.parent == type_folder:
+                    new_type_paths.append(str(src_path))
+                    continue
+                    
                 dst_path = type_folder / src_path.name
                 
                 # 如果目标位置已存在同名文件夹，先删除

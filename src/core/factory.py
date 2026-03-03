@@ -13,32 +13,29 @@ class ReaderFactory:
     def detect_type(path: Path) -> str:
         """只检测类型，不返回 Reader 实例（轻量级）"""
         if path.is_dir():
-            # Unitree 特征
-            if (path / "data.json").exists():
-                return "Unitree"
-            # 👇 [新增] 支持宇树多轨迹嵌套文件夹结构 (例如 episode_0000/data.json)
-            if list(path.glob("*/data.json")):
-                return "Unitree"
-                
-            # LeRobot / Dorobot 特征增强
+            # 1. 严格匹配结构化数据集根目录
+            if (path / "data.json").exists(): return "Unitree"
             if (path / "meta" / "info.json").exists(): return "LeRobot"
-            if list(path.glob("*/meta/info.json")): return "LeRobot"
-            if (path / "data").is_dir():
-                try:
-                    next((path / "data").rglob("*.parquet"))
-                    return "LeRobot"
-                except StopIteration: pass
+            if (path / "metadata.yaml").exists(): return "ROS"
+            
+            # 2. 嵌套多轨迹探测 (仅当同级没有混合的独立数据文件时，才视为专属容器)
+            has_loose_files = list(path.glob("*.hdf5")) or list(path.glob("*.h5")) or list(path.glob("*.bag")) or list(path.glob("*.mcap"))
+            
+            if not has_loose_files:
+                if list(path.glob("*/meta/info.json")): return "LeRobot"
+                if list(path.glob("*/data.json")): return "Unitree"
+                if (path / "data").is_dir():
+                    try:
+                        next((path / "data").rglob("*.parquet"))
+                        return "LeRobot"
+                    except StopIteration: pass
                     
-            # HDF5 文件夹特征
+            # 3. 松散文件聚合模式
             if list(path.glob("*.hdf5")) or list(path.glob("*.h5")): return "HDF5"
-                
-            # ROS 文件夹特征
             if list(path.glob("*.bag")) or list(path.glob("*.mcap")): return "ROS"
-                    
-            # Folder 特征 (包含图片)
-            if list(path.glob("*.jpg")) or list(path.glob("*.png")) or list(path.glob("colors/*.jpg")):
-                return "RawFolder"
+            if list(path.glob("*.jpg")) or list(path.glob("*.png")) or list(path.glob("colors/*.jpg")): return "RawFolder"
         else:
+            # 4. 单文件精确匹配
             ext = path.suffix.lower()
             if ext in ['.h5', '.hdf5']: return "HDF5"
             if ext in ['.bag', '.mcap']: return "ROS"

@@ -24,19 +24,22 @@ class DatasetInspector:
             if any(part.startswith('.') for part in current_path.parts):
                 continue
                 
-            # 检查当前目录是否为有效数据集
             dtype = ReaderFactory.detect_type(current_path)
             
-            # 如果是有效数据集（非 Unknown 且非 RawFolder）
-            if dtype not in ("Unknown", "RawFolder"):
+            # 策略 A: 结构化数据集，自身闭环，不需要再把子目录拆开当成独立数据集扫描
+            if dtype in ("Unitree", "LeRobot"):
                 self.stats[dtype] += 1
                 self._add_record(current_path, dtype)
+                dirs[:] = []  # 停止递归
                 
-                # 跳过对该目录内容的进一步递归
-                dirs[:] = []
+            # 策略 B: 松散文件聚合目录，记录自身，但允许继续扫描内部的独立子目录！
+            elif dtype in ("HDF5", "ROS", "RawFolder"):
+                self.stats[dtype] += 1
+                self._add_record(current_path, dtype)
+                # 注意：这里不执行 dirs[:] = []，放行 os.walk 继续深挖
                 
+            # 策略 C: 普通的杂货铺容器目录，针对里面的孤立文件做检测
             else:
-                # 如果目录本身不是数据集，则检查里面的文件 (针对 HDF5, ROS 等单文件格式)
                 for f in files:
                     if f.startswith("."): continue
                     

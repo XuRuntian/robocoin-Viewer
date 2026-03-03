@@ -357,8 +357,13 @@ def main():
                 else:
                     st.error("一致性检查失败，请检查数据格式。")
         
-        if 'valid_paths' in st.session_state:
-            st.info(f"当前有效数据总量: {len(st.session_state['valid_paths'])} 条")
+        if 'grouped_datasets' in st.session_state and 'valid_paths' in st.session_state:
+            # 获取所有检测到的数据类型
+            detected_types = list(st.session_state['grouped_datasets'].keys())
+            # 获取总目录/文件数
+            total_paths = len(st.session_state['valid_paths'])
+            
+            st.info(f"📂 扫描到有效数据路径: {total_paths} 个\n\n🏷️ 包含数据类型: {', '.join(detected_types)}")
 
     # 主界面分为三个 Tab
     tab1, tab2, tab3 = st.tabs(["🔍 第一步：数据清洗与排查", "📝 第二步：元数据标注", "⚙️ 第三步：词库维护 (Schema)"])
