@@ -532,6 +532,7 @@
         "gray": "灰色",
         "gold": "金色",
         "silver": "银色",
+        "transparent": "透明色",
         "other": "其他颜色",
         "unknown": "未知颜色",
         "none": "不适用"
