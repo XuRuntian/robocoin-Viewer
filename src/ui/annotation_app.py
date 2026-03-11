@@ -399,41 +399,85 @@ def main():
             grouped_datasets = st.session_state['grouped_datasets']
             valid_paths = st.session_state['valid_paths']
             
-            st.subheader("1. 数据类型检查与整理")
             if len(grouped_datasets) > 1:
                 st.warning(f"检测到 {len(grouped_datasets)} 种混合的数据类型: {list(grouped_datasets.keys())}")
-                if st.button("自动分类并物理隔离不同类型数据"):
-                    organizer = DatasetOrganizer(target_dir)
-                    new_grouped_paths = organizer.sort_by_type(grouped_datasets, target_dir)
-                    st.session_state['grouped_datasets'] = new_grouped_paths
-                    st.success("✅ 数据已按照类型分组移动到独立文件夹中。")
-                    st.rerun()
-                
-                selected_type = st.selectbox("请选择本次要处理的数据类型:", list(grouped_datasets.keys()))
-                valid_paths = grouped_datasets[selected_type]
-                st.session_state['valid_paths'] = valid_paths
-            else:
-                st.success(f"✅ 数据类型一致，仅包含: {list(grouped_datasets.keys())[0]}")
+                if "is_organizing" not in st.session_state:
+                    st.session_state['is_organizing'] = False
+                if not st.session_state.is_organizing:
+                    if st.button("自动分类并物理隔离不同类型数据"):
+                        st.session_state.is_organizing = True
+                        st.rerun()
+                if st.session_state.is_organizing:
+                    st.subheader("1. 数据类型检查与整理")
+                    if len(grouped_datasets) > 1:
+                        target_dir_name = os.path.basename(os.path.normpath(target_dir))
+                        st.warning(f"检测到 {len(grouped_datasets)} 种混合的数据类型: {list(grouped_datasets.keys())}。系统要求单个任务的数据集仅包含一种格式。")
+                        
+                        # 更新按钮文案以明确预期行为
+                        if st.button(f"按机器类型自动物理隔离 (将生成 {target_dir_name}_<类型> 文件夹)"):
+                            organizer = DatasetOrganizer(target_dir)
+                            organizer.sort_by_type(grouped_datasets, target_dir)
+                            
+                            # 隔离后，清除当前的扫描状态，强制中断后续流程
+                            st.session_state.is_organizing = False
+                            st.session_state.pop('grouped_datasets', None)
+                            st.session_state.pop('valid_paths', None)
+                            
+                            st.success(f"✅ 数据已成功分离！\n\n**请注意**：您需要进入左侧侧边栏，将「输入数据集根路径」修改为您刚刚生成的新目录（例如 `{target_dir_name}/{target_dir_name}_rosbag`），然后重新点击「扫描与类型检查」。")
+                            st.stop() # 停止渲染下方内容，强制用户去重选路径
+                        if st.button("取消隔离"):
+                            st.session_state.is_organizing = False
+                            st.rerun()
+                        # 如果检测到多类型且未点击隔离，也建议阻断后续的审核和预览，避免逻辑混乱
+                        st.info("👆 请先执行物理隔离，然后再继续下方的人工审核与标注。")
+                        st.stop() 
+                    else:
+                        st.success(f"✅ 数据类型一致，仅包含: {list(grouped_datasets.keys())[0]}")
 
             st.subheader("2. 人工逐帧审核 (排查不同任务数据)")
             st.markdown("通过 Rerun 窗口检查是否混入了**无关任务/动作错误**的数据。")
+
+            # === 新增：展示上一次审核的结果面板 ===
+            if 'review_summary' in st.session_state:
+                summary = st.session_state['review_summary']
+                st.markdown("#### 📊 审核结果汇总")
+                col_a, col_b, col_c = st.columns(3)
+                col_a.metric("总审核数据量", f"{summary['total']} 条")
+                col_b.metric("❌ Bad Mark 数量", f"{summary['bad']} 条")
+                col_c.metric("✅ 最终有效数据", f"{summary['good']} 条")
+
+                if summary['bad'] > 0 and 'quarantine_dir' in st.session_state:
+                    st.warning(f"🔒 异常数据已自动隔离至:\n`{st.session_state['quarantine_dir']}`")
+                else:
+                    st.success("✨ 完美！未发现混入的其他任务数据。")
+                st.markdown("---")
+
             if st.button("🚀 启动人工审核 (Rerun)"):
                 with st.spinner("请在弹出的 Rerun 窗口中操作 (使用键盘 N/P 切换, B 标记异常, Q/Esc 退出)..."):
                     viz = RerunVisualizer("RoboCoin_Review")
                     reviewer = DatasetReviewer(viz)
+                    print("DEBUG: valid_paths before review:", valid_paths)  # 调试输出，确认传入的路径列表
                     bad_datasets = reviewer.start_review(valid_paths)
-                    
+
+                    # === 新增：将结果存入 session_state 以便 UI 刷新后持久显示 ===
+                    st.session_state['review_summary'] = {
+                        'total': len(valid_paths),
+                        'bad': len(bad_datasets),
+                        'good': len(valid_paths) - len(bad_datasets)
+                    }
+
                     if bad_datasets:
                         organizer = DatasetOrganizer(target_dir)
                         quarantine_dir = organizer.quarantine_bad_data(bad_datasets, target_dir)
-                        st.warning(f"🔒 发现异常任务数据！已将其隔离到: {quarantine_dir}")
+                        st.session_state['quarantine_dir'] = quarantine_dir
                         final_paths = [p for p in valid_paths if p not in bad_datasets]
                         st.session_state['valid_paths'] = final_paths
-                        st.success(f"🧹 剔除异常数据后，剩余有效数据: {len(final_paths)} 条")
-                        st.rerun()  
                     else:
-                        st.success("✨ 完美！未发现混入的其他任务数据。")
-                        st.rerun()
+                        if 'quarantine_dir' in st.session_state:
+                            del st.session_state['quarantine_dir']
+
+                    # 强制刷新界面，让上方的统计面板显示出来
+                    st.rerun()
 
             st.subheader("3. 抽样对比预览 (检查命名与视频内容)")
             st.markdown("自动抽取 首、中、尾 3个样本进行并排播放，以便宏观确认数据与标注预期是否相符。")

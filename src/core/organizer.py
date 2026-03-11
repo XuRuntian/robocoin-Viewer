@@ -8,50 +8,45 @@ class DatasetOrganizer:
         self.root = Path(root_dir)
     
     def sort_by_type(self, grouped_datasets: dict, target_root: str) -> dict:
-        """
-        将数据集按类型分类并移动到目标目录下的相应文件夹中
-        """
-        # 统一转为绝对路径，方便精确比对
         target_root = Path(target_root).resolve()
+        base_name = target_root.name
         new_paths = {}
-        
+
         for dtype, paths in grouped_datasets.items():
             if not paths:
                 continue
-                
-            # 为每种类型创建子文件夹
-            type_folder = target_root / f"grouped_{dtype}"
+
+            type_folder = target_root / f"{base_name}_{dtype.lower()}"
             type_folder.mkdir(exist_ok=True)
-            
+
             new_type_paths = []
             for src_path in paths:
                 src_path = Path(src_path).resolve()
-                
-                # 🚀 修复点 1：防止将根目录移动到自身的子目录中
+
                 if src_path == target_root:
                     print(f"⚠️ 无法移动根目录自身，跳过: {src_path}")
-                    # 不移动，但依然保留在有效路径列表中
                     new_type_paths.append(str(src_path))
                     continue
-                
-                # 🚀 修复点 2：如果该文件夹已经被放进了正确的归类文件夹中，则跳过
+
                 if src_path.parent == type_folder:
                     new_type_paths.append(str(src_path))
                     continue
-                    
+
                 dst_path = type_folder / src_path.name
-                
-                # 如果目标位置已存在同名文件夹，先删除
+
+                # 💡 修复点：安全地覆盖同名的文件或文件夹
                 if dst_path.exists():
-                    shutil.rmtree(dst_path)
-                
-                # 移动文件夹并记录新路径
+                    if dst_path.is_dir():
+                        shutil.rmtree(dst_path)
+                    else:
+                        dst_path.unlink()
+
                 print(f"Moving {src_path} -> {dst_path}")
                 shutil.move(str(src_path), str(dst_path))
                 new_type_paths.append(str(dst_path))
-            
+
             new_paths[dtype] = new_type_paths
-        
+
         return new_paths
     
     def quarantine_bad_data(self, bad_paths: list, root_dir: str) -> str:

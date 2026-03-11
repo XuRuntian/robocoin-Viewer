@@ -15,41 +15,35 @@ class DatasetInspector:
 
     def scan(self):
         print(f"🕵️‍♂️ 正在扫描目录: {self.root}")
-        
-        # 使用 os.walk 进行递归扫描
+
         for root_path, dirs, files in os.walk(self.root):
             current_path = Path(root_path)
-            
-            # 跳过隐藏目录
+
             if any(part.startswith('.') for part in current_path.parts):
                 continue
-                
-            dtype = ReaderFactory.detect_type(current_path)
-            
-            # 策略 A: 结构化数据集，自身闭环，不需要再把子目录拆开当成独立数据集扫描
-            if dtype in ("Unitree", "LeRobot"):
-                self.stats[dtype] += 1
-                self._add_record(current_path, dtype)
-                dirs[:] = []  # 停止递归
-                
-            # 策略 B: 松散文件聚合目录，记录自身，但允许继续扫描内部的独立子目录！
-            elif dtype in ("HDF5", "ROS", "RawFolder"):
-                self.stats[dtype] += 1
-                self._add_record(current_path, dtype)
-                # 注意：这里不执行 dirs[:] = []，放行 os.walk 继续深挖
-                
-            # 策略 C: 普通的杂货铺容器目录，针对里面的孤立文件做检测
-            else:
-                for f in files:
-                    if f.startswith("."): continue
-                    
-                    file_path = current_path / f
-                    file_dtype = ReaderFactory.detect_type(file_path)
-                    
-                    if file_dtype not in ("Unknown", "RawFolder"):
-                        self.stats[file_dtype] += 1
-                        self._add_record(file_path, file_dtype)
 
+            dtype = ReaderFactory.detect_type(current_path)
+
+            # 策略 A: 结构化数据集或图片文件夹，自身闭环
+            if dtype in ("Unitree", "LeRobot", "RawFolder"):
+                self.stats[dtype] += 1
+                self._add_record(current_path, dtype)
+                
+                # 💡 修复点：无论是这三种哪一个，都不要再往下遍历它的子目录了
+                dirs[:] = []
+                continue
+
+            # 策略 B: 处理散落的文件 (HDF5 / ROS)
+            for f in files:
+                if f.startswith("."): continue
+                
+                file_path = current_path / f
+                file_dtype = ReaderFactory.detect_type(file_path)
+                
+                if file_dtype in ("HDF5", "ROS"):
+                    self.stats[file_dtype] += 1
+                    self._add_record(file_path, file_dtype)
+                    
     def _add_record(self, path, dtype):
         info = {
             "name": path.name,
