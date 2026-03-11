@@ -737,6 +737,82 @@ def main():
                                                 json.dump(current_schema, f, ensure_ascii=False, indent=2)
                                             load_vocabulary.clear()
                                             st.rerun()
+                    # ======= 新增：专门处理物品和颜色的维护 =======
+                    elif field_type == "object_table":
+                        with st.expander(f"📦 物品与颜色词库: {field['label']} ({field['key']})"):
+                            st.markdown(f"**所属分组:** {field.get('group', '未分组')} | **类型:** {field_type}")
+
+                            # ---------------- 1. 维护物品名称 (name_options) ----------------
+                            st.markdown("#### 1. 物品名称维护")
+                            name_options = field.get("name_options", {})
+                            if name_options:
+                                opt_cols = st.columns(3)
+                                for i, (opt_key, opt_label) in enumerate(list(name_options.items())):
+                                    col = opt_cols[i % 3]
+                                    col.markdown(f"`{opt_key}` - {opt_label}")
+                                    if col.button("🗑️", key=f"del_obj_{field['key']}_{opt_key}"):
+                                        del current_schema["fields"][idx]["name_options"][opt_key]
+                                        with open(curr_vocab_path, 'w', encoding='utf-8') as f:
+                                            json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                        load_vocabulary.clear()
+                                        st.rerun()
+                            else:
+                                st.caption("暂无物品选项")
+
+                            st.markdown("##### ➕ 新增物品")
+                            c1, c2, c3 = st.columns([2, 2, 1])
+                            with c1: new_obj_key = st.text_input("英文 Key (如 cup)", key=f"new_obj_k_{field['key']}")
+                            with c2: new_obj_label = st.text_input("中文显示名 (如 杯子)", key=f"new_obj_l_{field['key']}")
+                            with c3:
+                                st.markdown("<br>", unsafe_allow_html=True)
+                                if st.button("添加物品", key=f"add_obj_btn_{field['key']}", use_container_width=True):
+                                    if new_obj_key.strip() and new_obj_label.strip():
+                                        if "name_options" not in current_schema["fields"][idx]:
+                                            current_schema["fields"][idx]["name_options"] = {}
+                                        current_schema["fields"][idx]["name_options"][new_obj_key.strip()] = new_obj_label.strip()
+                                        with open(curr_vocab_path, 'w', encoding='utf-8') as f:
+                                            json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                        load_vocabulary.clear()
+                                        st.rerun()
+                                    else:
+                                        st.warning("不能为空！")
+
+                            st.markdown("---")
+
+                            # ---------------- 2. 维护颜色 (color_options) ----------------
+                            st.markdown("#### 2. 颜色选项维护")
+                            color_options = field.get("color_options", {})
+                            if color_options:
+                                col_cols = st.columns(3)
+                                for i, (opt_key, opt_label) in enumerate(list(color_options.items())):
+                                    col = col_cols[i % 3]
+                                    col.markdown(f"`{opt_key}` - {opt_label}")
+                                    if col.button("🗑️", key=f"del_col_{field['key']}_{opt_key}"):
+                                        del current_schema["fields"][idx]["color_options"][opt_key]
+                                        with open(curr_vocab_path, 'w', encoding='utf-8') as f:
+                                            json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                        load_vocabulary.clear()
+                                        st.rerun()
+                            else:
+                                st.caption("暂无颜色选项")
+
+                            st.markdown("##### ➕ 新增颜色")
+                            cc1, cc2, cc3 = st.columns([2, 2, 1])
+                            with cc1: new_col_key = st.text_input("英文 Key (如 cyan)", key=f"new_col_k_{field['key']}")
+                            with cc2: new_col_label = st.text_input("中文显示名 (如 青色)", key=f"new_col_l_{field['key']}")
+                            with cc3:
+                                st.markdown("<br>", unsafe_allow_html=True)
+                                if st.button("添加颜色", key=f"add_col_btn_{field['key']}", use_container_width=True):
+                                    if new_col_key.strip() and new_col_label.strip():
+                                        if "color_options" not in current_schema["fields"][idx]:
+                                            current_schema["fields"][idx]["color_options"] = {}
+                                        current_schema["fields"][idx]["color_options"][new_col_key.strip()] = new_col_label.strip()
+                                        with open(curr_vocab_path, 'w', encoding='utf-8') as f:
+                                            json.dump(current_schema, f, ensure_ascii=False, indent=2)
+                                        load_vocabulary.clear()
+                                        st.rerun()
+                                    else:
+                                        st.warning("不能为空！")
 
 if __name__ == "__main__":
     main()
