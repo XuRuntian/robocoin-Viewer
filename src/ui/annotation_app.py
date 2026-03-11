@@ -399,21 +399,40 @@ def main():
             grouped_datasets = st.session_state['grouped_datasets']
             valid_paths = st.session_state['valid_paths']
             
-            st.subheader("1. 数据类型检查与整理")
             if len(grouped_datasets) > 1:
                 st.warning(f"检测到 {len(grouped_datasets)} 种混合的数据类型: {list(grouped_datasets.keys())}")
-                if st.button("自动分类并物理隔离不同类型数据"):
-                    organizer = DatasetOrganizer(target_dir)
-                    new_grouped_paths = organizer.sort_by_type(grouped_datasets, target_dir)
-                    st.session_state['grouped_datasets'] = new_grouped_paths
-                    st.success("✅ 数据已按照类型分组移动到独立文件夹中。")
-                    st.rerun()
-                
-                selected_type = st.selectbox("请选择本次要处理的数据类型:", list(grouped_datasets.keys()))
-                valid_paths = grouped_datasets[selected_type]
-                st.session_state['valid_paths'] = valid_paths
-            else:
-                st.success(f"✅ 数据类型一致，仅包含: {list(grouped_datasets.keys())[0]}")
+                if "is_organizing" not in st.session_state:
+                    st.session_state['is_organizing'] = False
+                if not st.session_state.is_organizing:
+                    if st.button("自动分类并物理隔离不同类型数据"):
+                        st.session_state.is_organizing = True
+                        st.rerun()
+                if st.session_state.is_organizing:
+                    st.subheader("1. 数据类型检查与整理")
+                    if len(grouped_datasets) > 1:
+                        target_dir_name = os.path.basename(os.path.normpath(target_dir))
+                        st.warning(f"检测到 {len(grouped_datasets)} 种混合的数据类型: {list(grouped_datasets.keys())}。系统要求单个任务的数据集仅包含一种格式。")
+                        
+                        # 更新按钮文案以明确预期行为
+                        if st.button(f"按机器类型自动物理隔离 (将生成 {target_dir_name}_<类型> 文件夹)"):
+                            organizer = DatasetOrganizer(target_dir)
+                            organizer.sort_by_type(grouped_datasets, target_dir)
+                            
+                            # 隔离后，清除当前的扫描状态，强制中断后续流程
+                            st.session_state.is_organizing = False
+                            st.session_state.pop('grouped_datasets', None)
+                            st.session_state.pop('valid_paths', None)
+                            
+                            st.success(f"✅ 数据已成功分离！\n\n**请注意**：您需要进入左侧侧边栏，将「输入数据集根路径」修改为您刚刚生成的新目录（例如 `{target_dir_name}/{target_dir_name}_rosbag`），然后重新点击「扫描与类型检查」。")
+                            st.stop() # 停止渲染下方内容，强制用户去重选路径
+                        if st.button("取消隔离"):
+                            st.session_state.is_organizing = False
+                            st.rerun()
+                        # 如果检测到多类型且未点击隔离，也建议阻断后续的审核和预览，避免逻辑混乱
+                        st.info("👆 请先执行物理隔离，然后再继续下方的人工审核与标注。")
+                        st.stop() 
+                    else:
+                        st.success(f"✅ 数据类型一致，仅包含: {list(grouped_datasets.keys())[0]}")
 
             st.subheader("2. 人工逐帧审核 (排查不同任务数据)")
             st.markdown("通过 Rerun 窗口检查是否混入了**无关任务/动作错误**的数据。")
