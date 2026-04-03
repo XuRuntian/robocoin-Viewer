@@ -1,22 +1,39 @@
 # src/adapters/hdf5_adapter.py
 import h5py
 import numpy as np
-from typing import List, Dict, Any
+from typing import List, Dict, Any,Optional
 from pathlib import Path
-from src.core.interface import BaseDatasetReader, FrameData
+from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
 import cv2
 
 class HDF5Adapter(BaseDatasetReader):
-    def __init__(self):
+    def __init__(self, config: Optional[AdapterConfig] = None):
+        super().__init__(config) # 注入配置
         self.root_path = None
         self.file = None
-        self.image_keys = [] 
         self._length = 0
         
-        # [新增] 轨迹管理属性
         self.episode_files = [] 
         self.current_episode_idx = 0
 
+    def _find_dataset_length(self, h5_node) -> int:
+        """递归寻找有效的 Dataset，避免对 Group 调用 .shape"""
+        if isinstance(h5_node, h5py.Dataset):
+            return h5_node.shape[0]
+        
+        if isinstance(h5_node, h5py.Group):
+            # 优先使用配置中指定的 Key
+            ref_key = self.config.length_reference_key
+            if ref_key and ref_key in h5_node and isinstance(h5_node[ref_key], h5py.Dataset):
+                return h5_node[ref_key].shape[0]
+            
+            # 如果没配置或找不到，遍历子节点找第一个 Dataset 兜底
+            for key, val in h5_node.items():
+                length = self._find_dataset_length(val)
+                if length > 0:
+                    return length
+        return 0
+    
     def load(self, file_path: str) -> bool:
         """
         加载 HDF5 数据集。
@@ -60,33 +77,24 @@ class HDF5Adapter(BaseDatasetReader):
         self.close()
         
         target_file = self.episode_files[episode_idx]
-        self.file = h5py.File(target_file, 'r')
-        
-        # 1. 确定数据集长度
-        if 'action' in self.file:
-            self._length = self.file['action'].shape[0]
-        elif 'qpos' in self.file:
-            self._length = self.file['qpos'].shape[0]
-        else:
-            first_key = list(self.file.keys())[0]
-            self._length = self.file[first_key].shape[0]
 
-        # 2. 自动寻找图片存放的路径 (常见结构: observations -> images -> cam_name)
-        self.image_keys = []
-        if 'observations' in self.file and 'images' in self.file['observations']:
-            img_grp = self.file['observations']['images']
-            for cam_name in img_grp.keys():
-                self.image_keys.append(f"observations/images/{cam_name}")
-        
+        self.file = h5py.File(target_file, 'r')
+        self._length = self._find_dataset_length(self.file)
+        self.image_keys = list(self.config.image_keys_map.values())
         if not self.image_keys:
-            print(f"⚠️ [HDF5] 警告: 在 {target_file.name} 中未检测到标准图片路径 'observations/images'。")
+            if 'observations' in self.file and 'images' in self.file['observations']:
+                img_grp = self.file['observations']['images']
+                for cam_name in img_grp.keys():
+                    # 动态构建配置映射
+                    self.config.image_keys_map[cam_name] = f"observations/images/{cam_name}"
+            self.image_keys = list(self.config.image_keys_map.values())
             
-        print(f"🔄 [HDF5] 切换至 Episode {episode_idx} ({target_file.name}): {self._length} 帧, 相机: {[k.split('/')[-1] for k in self.image_keys]}")
+        print(f"🔄 [HDF5] 切换至 Episode {episode_idx}: {self._length} 帧, 相机映射: {self.config.image_keys_map}")
 
     def get_total_episodes(self) -> int:
         """[新增] 实现抽象方法：获取总轨迹数"""
-        return len(self.episode_files)
-
+        return list(self.config.image_keys_map.keys())
+    
     def get_length(self) -> int:
         return self._length
 
@@ -101,9 +109,9 @@ class HDF5Adapter(BaseDatasetReader):
             raise IndexError(f"Index {index} out of bounds (0-{self._length-1})")
 
         images = {}
-        for key in self.image_keys:
-            cam_name = key.split('/')[-1]
-            raw_data = self.file[key][index] 
+        for std_cam_name, h5_path in self.config.image_keys_map.items():
+            if h5_path in self.file:
+                raw_data = self.file[h5_path][index] 
             
             # 处理不同格式的图片存储
             if raw_data.ndim == 1:
@@ -119,14 +127,13 @@ class HDF5Adapter(BaseDatasetReader):
             
             # 防止 decode 失败导致报错
             if img_data is not None:
-                images[cam_name] = img_data
+                images[std_cam_name] = img_data
 
         # 读取状态
         state_data = {}
-        if 'qpos' in self.file:
-            state_data['qpos'] = self.file['qpos'][index]
-        if 'action' in self.file:
-             state_data['action'] = self.file['action'][index]
+        for std_state_name, h5_path in self.config.state_keys_map.items():
+            if h5_path in self.file:
+                 state_data[std_state_name] = self.file[h5_path][index]
 
         return FrameData(
             timestamp=float(index),

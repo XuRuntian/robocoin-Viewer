@@ -1,5 +1,6 @@
 # src/core/factory.py
 from pathlib import Path
+import json
 from typing import Optional
 from src.core.interface import BaseDatasetReader
 from src.adapters.hdf5_adapter import HDF5Adapter
@@ -9,6 +10,18 @@ from src.adapters.folder_adapter import FolderAdapter
 from src.adapters.lerobot_adapter import LeRobotAdapter
 
 class ReaderFactory:
+    _rules_cache = None
+
+    @classmethod
+    def load_rules(cls) -> dict:
+        if cls._rules_cache is None:
+            rules_path = Path("configs/adapter_rules.json")
+            if rules_path.exists():
+                with open(rules_path, 'r', encoding='utf-8') as f:
+                    cls._rules_cache = json.load(f)
+            else:
+                cls._rules_cache = {}
+        return cls._rules_cache
     @staticmethod
     def detect_type(path: Path) -> str:
         """只检测类型，不返回 Reader 实例（轻量级）"""
