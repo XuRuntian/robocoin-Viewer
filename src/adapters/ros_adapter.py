@@ -8,10 +8,15 @@ from typing import List, Dict, Any
 from mcap.reader import make_reader
 from rosbags.highlevel import AnyReader
 from rosbags.typesys import Stores, get_typestore
-from src.core.interface import BaseDatasetReader, FrameData
+from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
+from src.core.registry import AdapterRegistry
+from typing import Optional
+
+@AdapterRegistry.register("ROS")
 
 class RosAdapter(BaseDatasetReader):
-    def __init__(self):
+    def __init__(self, config: Optional[AdapterConfig] = None):
+        super().__init__(config)
         self.root_path = None
         self.reader = None
         self.is_mcap = False

@@ -5,7 +5,9 @@ from typing import List, Dict, Any,Optional
 from pathlib import Path
 from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
 import cv2
+from src.core.registry import AdapterRegistry
 
+@AdapterRegistry.register("HDF5")
 class HDF5Adapter(BaseDatasetReader):
     def __init__(self, config: Optional[AdapterConfig] = None):
         super().__init__(config) # 注入配置

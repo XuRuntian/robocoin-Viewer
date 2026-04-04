@@ -5,10 +5,14 @@ import numpy as np
 from pathlib import Path
 import imageio
 from typing import List, Dict, Any
-from src.core.interface import BaseDatasetReader, FrameData
+from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
+from src.core.registry import AdapterRegistry
+from typing import Optional
 
+@AdapterRegistry.register("LeRobot")
 class LeRobotAdapter(BaseDatasetReader):
-    def __init__(self):
+    def __init__(self, config: Optional[AdapterConfig] = None):
+        super().__init__(config)
         self.root_path = None
         self.current_dataset_root = None # 用于记录当前激活 Episode 的根目录
         self.df = None
