@@ -15,11 +15,14 @@
     },
     "length_reference_key": "observations/timestamp",
     "image_keys_map": {
-      "cam_chest": "observations/camera/rgb/chest/images",
-      "cam_left": "observations/camera/rgb/left/images"
+      "cam_head": "observations/camera/rgb/chest/images",
+      "cam_right": "observations/camera/rgb/left/images",
+      "cam_left": "observations/camera/rgb/left/images",
+      "cam_chest": "observations/camera/rgb/chest/images"
     },
     "state_keys_map": {
-      "qpos_left_arm": "observations/arm/left/joints"
+      "qpos_left": "observations/arm/left/joints",
+      "qpos_right": "observations/arm/right/joints"
     }
   }
 }

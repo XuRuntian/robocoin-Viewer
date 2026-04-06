@@ -229,18 +229,28 @@ def render_field(field, current_data, all_fields=None):
 def setup_comparison_layout(sample_names, cameras):
     columns = []
     for idx, name in enumerate(sample_names):
-        # 💡 关键修改：Spatial2DView 的 origin 不再深入到具体相机名
-        # 而是停留在 sample_{idx} 这一层，这样无论相机叫什么都能显示出来
+        # 1. 动态为每个相机生成一个独立的 2D 视图
+        cam_views = []
+        for cam in cameras:
+            cam_views.append(
+                rrb.Spatial2DView(
+                    origin=f"preview/sample_{idx}/{cam}",
+                    name=cam  # 视图的标题就是相机名
+                )
+            )
+
+        # 2. 用 Grid 容器包裹，实现自适应排版 (1个就全屏，4个就2x2，9个就3x3)
+        cam_grid = rrb.Grid(*cam_views)
+
+        # 3. 纵向组装：上面是文本信息，下面是相机网格
         columns.append(rrb.Vertical(
             rrb.TextDocumentView(origin=f"preview/sample_{idx}/info", name="Dataset Info"),
-            rrb.Spatial2DView(
-                origin=f"preview/sample_{idx}", # 监听整个样本路径
-                name=f"Views"
-            ),
-            row_shares=[1, 4], 
+            cam_grid,
+            row_shares=[1, 6], 
             name=f"Sample {idx+1}: {name}"
         ))
-        
+
+    # 4. 横向组装：把 3 个样本的列并排展示
     blueprint = rrb.Blueprint(rrb.Horizontal(*columns), collapse_panels=True)
     rr.send_blueprint(blueprint)
 
@@ -248,7 +258,7 @@ def run_parallel_preview(sample_paths):
     temp_reader = ReaderFactory.get_reader(sample_paths[0])
     temp_reader.load(sample_paths[0])
     cameras = temp_reader.get_all_sensors()
-    
+    print(f"DEBUG: Cameras detected for preview: {cameras}")  # 调试输出，确认相机列表
     rr.init("RoboCoin_Preview", spawn=True)
     setup_comparison_layout([os.path.basename(p) for p in sample_paths], cameras)
     temp_reader.close()

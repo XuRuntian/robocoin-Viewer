@@ -95,13 +95,13 @@ class HDF5Adapter(BaseDatasetReader):
 
     def get_total_episodes(self) -> int:
         """[新增] 实现抽象方法：获取总轨迹数"""
-        return list(self.config.image_keys_map.keys())
+        return len(self.episode_files)
     
     def get_length(self) -> int:
         return self._length
 
     def get_all_sensors(self) -> List[str]:
-        return [k.split('/')[-1] for k in self.image_keys]
+        return list(self.config.image_keys_map.keys())
 
     def get_frame(self, index: int) -> FrameData:
         if self.file is None:

@@ -237,8 +237,23 @@ class DatasetReviewer:
 
             for prefix, idx in indices.items():
                 frame = reader.get_frame(idx)
-                for cam_name, img in frame.images.items():
-                    rr.log(f"review/{prefix}/{cam_name}", rr.Image(img))
+                if not frame.images:
+                    continue
+                
+                # --- 恢复偏好选择逻辑 ---
+                # 策略：优先找名字里带 'head', 'front', 'top', 'chest' 等全局视角的相机
+                primary_cam = None
+                for cam in frame.images.keys():
+                    if any(kw in cam.lower() for kw in ['head', 'front', 'top',]):
+                        primary_cam = cam
+                        break
+                
+                # 如果没找到带特定关键词的，就兜底用第一个相机
+                if not primary_cam:
+                    primary_cam = list(frame.images.keys())[0]
+                    
+                # 只 Log 这一个主视角的画面，并且直接盖在 review/{prefix} 节点上
+                rr.log(f"review/{prefix}", rr.Image(frame.images[primary_cam]))
 
         except Exception as e:
             pass
