@@ -4,10 +4,14 @@ import cv2
 import numpy as np
 from pathlib import Path
 from typing import List, Dict, Any
-from src.core.interface import BaseDatasetReader, FrameData
+from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
+from src.core.registry import AdapterRegistry
+from typing import Optional
 
+@AdapterRegistry.register("RawFolder")
 class FolderAdapter(BaseDatasetReader):
-    def __init__(self):
+    def __init__(self, config: Optional[AdapterConfig] = None):
+        super().__init__(config)
         self.root_path = None
         self.frames = [] 
         self.sensors = []
