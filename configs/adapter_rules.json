@@ -68,5 +68,20 @@
       "head_camera": "color_0",
       "chest_camera": "color_1"
     }
+  },
+
+  "Example_DAS_Ego_Dataset": {
+    "_comment": "【示例】ego数据",
+    "base_type": "Ego",
+    "match_rules": {
+      "path_keywords": ["DAS", "ego_record"]
+    },
+    "extra_options": {
+      "enable_undistort": true 
+    },
+    "image_keys_map": {
+      "cam_head": "camera0",
+      "cam_head_1": "camera1"
+    }
   }
 }

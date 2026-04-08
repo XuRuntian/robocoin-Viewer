@@ -13,6 +13,7 @@ class DatasetReviewer:
         :param visualizer: RerunVisualizer 实例
         """
         self.viz = visualizer
+        self.lock = threading.Lock()
         self.bad_datasets = [] 
         self.current_idx = 0            # 当前数据集文件夹的索引
         self.current_ep_idx = 0         # 新增：当前数据集内部的 Episode 索引
@@ -74,22 +75,23 @@ class DatasetReviewer:
 
     def _load_reader(self, path):
         """加载 Reader 并获取总 Episode 数"""
-        if self.current_path == path and self.current_reader is not None:
-            return
-        
-        if self.current_reader:
-            self.current_reader.close()
+        with self.lock:
+            if self.current_path == path and self.current_reader is not None:
+                return
             
-        self.current_reader = ReaderFactory.get_reader(path)
-        if self.current_reader and self.current_reader.load(path):
-            self.current_path = path
-            # 调用你新增的 get_total_episodes()
-            if hasattr(self.current_reader, 'get_total_episodes'):
-                self.total_episodes = self.current_reader.get_total_episodes()
+            if self.current_reader:
+                self.current_reader.close()
+                
+            self.current_reader = ReaderFactory.get_reader(path)
+            if self.current_reader and self.current_reader.load(path):
+                self.current_path = path
+                # 调用你新增的 get_total_episodes()
+                if hasattr(self.current_reader, 'get_total_episodes'):
+                    self.total_episodes = self.current_reader.get_total_episodes()
+                else:
+                    self.total_episodes = 1
             else:
                 self.total_episodes = 1
-        else:
-            self.total_episodes = 1
 
     def _on_key_release(self, key):
         if not self.is_running:
@@ -199,61 +201,61 @@ class DatasetReviewer:
 
     def _show_dataset_snapshot(self):
         rr.log("review", rr.Clear(recursive=True))
-
-        reader = self.current_reader
-        if not reader:
-            rr.log("review/info", rr.TextDocument(f"❌ Load Failed: {self.current_path}"))
-            return
-
-        try:
-            # 调用你新增的方法：切换 Episode
-            if hasattr(reader, 'set_episode'):
-                reader.set_episode(self.current_ep_idx)
-
-            length = reader.get_length()
-            if length == 0:
-                rr.log("review/info", rr.TextDocument(f"⚠️ Empty Episode"))
+        with self.lock:
+            reader = self.current_reader
+            if not reader:
+                rr.log("review/info", rr.TextDocument(f"❌ Load Failed: {self.current_path}"))
                 return
 
-            indices = {
-                "0_start": 0,
-                "1_mid": length // 2,
-                "2_end": length - 1
-            }
+            try:
+                # 调用你新增的方法：切换 Episode
+                if hasattr(reader, 'set_episode'):
+                    reader.set_episode(self.current_ep_idx)
 
-            actual_path = self._get_actual_path()
-            status_text = "🔴 **BAD DATA**" if actual_path in self.bad_datasets else "🟢 **GOOD DATA**"
-            
-            # Info 面板丰富显示层级
-            info_text = f"# {Path(actual_path).name}\n\n"
-            info_text += f"**Dataset Dir**: {Path(self.current_path).name}\n"
-            info_text += f"**Episode**: {self.current_ep_idx + 1} / {self.total_episodes}\n"
-            info_text += f"**Frames**: {length}\n"
-            info_text += f"**Type**: {type(reader).__name__}\n"
-            info_text += f"**Status**: {status_text}\n"
-            info_text += "\n---\n**Controls**:\n[→] Next | [←] Prev | [B] Mark Bad | [Esc] Quit"
-            
-            rr.log("review/info", rr.TextDocument(info_text, media_type="text/markdown"))
+                length = reader.get_length()
+                if length == 0:
+                    rr.log("review/info", rr.TextDocument(f"⚠️ Empty Episode"))
+                    return
 
-            for prefix, idx in indices.items():
-                frame = reader.get_frame(idx)
-                if not frame.images:
-                    continue
+                indices = {
+                    "0_start": 0,
+                    "1_mid": length // 2,
+                    "2_end": length - 1
+                }
+
+                actual_path = self._get_actual_path()
+                status_text = "🔴 **BAD DATA**" if actual_path in self.bad_datasets else "🟢 **GOOD DATA**"
                 
-                # --- 恢复偏好选择逻辑 ---
-                # 策略：优先找名字里带 'head', 'front', 'top', 'chest' 等全局视角的相机
-                primary_cam = None
-                for cam in frame.images.keys():
-                    if any(kw in cam.lower() for kw in ['head', 'front', 'top',]):
-                        primary_cam = cam
-                        break
+                # Info 面板丰富显示层级
+                info_text = f"# {Path(actual_path).name}\n\n"
+                info_text += f"**Dataset Dir**: {Path(self.current_path).name}\n"
+                info_text += f"**Episode**: {self.current_ep_idx + 1} / {self.total_episodes}\n"
+                info_text += f"**Frames**: {length}\n"
+                info_text += f"**Type**: {type(reader).__name__}\n"
+                info_text += f"**Status**: {status_text}\n"
+                info_text += "\n---\n**Controls**:\n[→] Next | [←] Prev | [B] Mark Bad | [Esc] Quit"
                 
-                # 如果没找到带特定关键词的，就兜底用第一个相机
-                if not primary_cam:
-                    primary_cam = list(frame.images.keys())[0]
+                rr.log("review/info", rr.TextDocument(info_text, media_type="text/markdown"))
+
+                for prefix, idx in indices.items():
+                    frame = reader.get_frame(idx)
+                    if not frame.images:
+                        continue
                     
-                # 只 Log 这一个主视角的画面，并且直接盖在 review/{prefix} 节点上
-                rr.log(f"review/{prefix}", rr.Image(frame.images[primary_cam]))
+                    # --- 恢复偏好选择逻辑 ---
+                    # 策略：优先找名字里带 'head', 'front', 'top', 'chest' 等全局视角的相机
+                    primary_cam = None
+                    for cam in frame.images.keys():
+                        if any(kw in cam.lower() for kw in ['head', 'front', 'top',]):
+                            primary_cam = cam
+                            break
+                    
+                    # 如果没找到带特定关键词的，就兜底用第一个相机
+                    if not primary_cam:
+                        primary_cam = list(frame.images.keys())[0]
+                        
+                    # 只 Log 这一个主视角的画面，并且直接盖在 review/{prefix} 节点上
+                    rr.log(f"review/{prefix}", rr.Image(frame.images[primary_cam]))
 
-        except Exception as e:
-            pass
+            except Exception as e:
+                pass
