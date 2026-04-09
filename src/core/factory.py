@@ -82,7 +82,8 @@ class ReaderFactory:
         
         # 先尝试匹配具体业务 (如 ZhiPingFang)
         for profile_name, data in all_rules.items():
-            if ReaderFactory._evaluate_rules(path, data.get("match_rules", {})):
+            # 修复：确保 data 是字典，不是字符串
+            if isinstance(data, dict) and ReaderFactory._evaluate_rules(path, data.get("match_rules", {})):
                 config_dict = data
                 break
                 
