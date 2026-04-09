@@ -17,8 +17,8 @@
     },
     "length_reference_key": "observations/timestamp",
     "image_keys_map": {
-      "cam_head": "observations/camera/rgb/chest/images",
-      "cam_right": "observations/camera/rgb/left/images",
+      "cam_head": "observations/camera/rgb/head/images",
+      "cam_right": "observations/camera/rgb/right/images",
       "cam_left": "observations/camera/rgb/left/images",
       "cam_chest": "observations/camera/rgb/chest/images"
     },
