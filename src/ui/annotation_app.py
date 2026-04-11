@@ -575,22 +575,29 @@ def main():
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
                 if st.button("🚨 确认无误，生成文件并重命名", type="primary"):
-                    # 1. 保存YAML
-                    save_path = ConfigGenerator.analyze_and_save(preview_data, target_dir, filename="local_dataset_info.yaml")
-
-                    # 2. 重命名文件夹
                     target_dir_norm = os.path.normpath(target_dir)
                     parent_dir = os.path.dirname(target_dir_norm)
+                    
+                    # 1. 检查重名并分配安全的新名字
                     new_target_dir = os.path.join(parent_dir, final_dataset_name)
+                    if os.path.exists(new_target_dir) and target_dir_norm != new_target_dir:
+                        timestamp = time.strftime("%Y%m%d_%H%M%S")
+                        final_dataset_name = f"{final_dataset_name}_{timestamp}"
+                        new_target_dir = os.path.join(parent_dir, final_dataset_name)
+                        # 同步更新 YAML 中的数据集名称
+                        preview_data["dataset_name"] = final_dataset_name
+                        st.toast(f"检测到同名文件夹，自动附加时间戳：{final_dataset_name}")
 
                     try:
+                        # 2. 优先重命名文件夹 (避免在旧路径下生成新文件后改名失败，导致文件散落)
                         if target_dir_norm != new_target_dir:
                             os.rename(target_dir_norm, new_target_dir)
-                            # 更新全局路径
                             st.session_state['dataset_path'] = new_target_dir
-                            st.success(f"🎉 标注文件已保存！文件夹已成功重命名为 `{final_dataset_name}`！")
-                        else:
-                            st.success(f"🎉 标注文件已保存！文件夹名称已经是 `{final_dataset_name}`，无需修改。")
+
+                        # 3. 在新文件夹中生成并保存 YAML (引入了防覆盖的备份逻辑，见后文 ConfigGenerator 修改)
+                        save_path = ConfigGenerator.analyze_and_save(preview_data, new_target_dir, filename="local_dataset_info.yaml")
+
+                        st.success(f"🎉 标注文件已保存！文件夹最终名称为 `{final_dataset_name}`。")
 
                         # 清除预览状态
                         st.session_state['show_preview'] = False
@@ -598,8 +605,7 @@ def main():
                         st.rerun()
 
                     except Exception as e:
-                        st.error(f"❌ 文件夹重命名失败 (可能被其他程序占用或权限不足): {e}")
-                        st.info("YAML 文件已生成，但请手动修改文件夹名称。")
+                        st.error(f"❌ 操作失败 (文件可能被占用或无权限): {e}")
 
             with col_btn2:
                 if st.button("返回修改", use_container_width=True):

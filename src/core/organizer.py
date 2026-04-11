@@ -34,12 +34,13 @@ class DatasetOrganizer:
 
                 dst_path = type_folder / src_path.name
 
-                # 💡 修复点：安全地覆盖同名的文件或文件夹
+                # [安全修复] 不再暴力删除旧数据，而是通过时间戳保证名字唯一
                 if dst_path.exists():
-                    if dst_path.is_dir():
-                        shutil.rmtree(dst_path)
-                    else:
-                        dst_path.unlink()
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    # stem 取文件名主体，suffix 取后缀
+                    new_name = f"{src_path.stem}_{timestamp}{src_path.suffix}"
+                    dst_path = type_folder / new_name
+                    print(f"⚠️ 目标路径存在重名，已重命名为: {new_name}")
 
                 print(f"Moving {src_path} -> {dst_path}")
                 shutil.move(str(src_path), str(dst_path))
@@ -50,16 +51,6 @@ class DatasetOrganizer:
         return new_paths
     
     def quarantine_bad_data(self, bad_paths: list, root_dir: str) -> str:
-        """
-        将无效数据集移动到隔离区并生成清单文件
-        
-        Args:
-            bad_paths: 需要隔离的文件路径列表
-            root_dir: 根目录路径
-            
-        Returns:
-            隔离区路径
-        """
         root_dir = Path(root_dir)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         quarantine_dir = root_dir / f"_QUARANTINE_{timestamp}"
@@ -72,15 +63,15 @@ class DatasetOrganizer:
                 path = Path(path)
                 dst_path = quarantine_dir / path.name
                 
-                # 如果目标位置已存在同名文件夹，先删除
+                # [安全修复] 如果隔离区发生极其罕见的内部重名，也同样加后缀
                 if dst_path.exists():
-                    shutil.rmtree(dst_path)
+                    time_suffix = datetime.now().strftime("%H%M%S")
+                    new_name = f"{path.stem}_{time_suffix}{path.suffix}"
+                    dst_path = quarantine_dir / new_name
                 
-                # 移动文件夹并记录信息
                 print(f"Moving {path} -> {dst_path}")
                 shutil.move(str(path), str(dst_path))
                 
-                # 记录原始信息
                 f.write(f"Original Path: {path}\n")
                 f.write(f"Moved to: {dst_path}\n")
                 f.write("-" * 50 + "\n")
