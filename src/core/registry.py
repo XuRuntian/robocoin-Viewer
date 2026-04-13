@@ -1,19 +1,17 @@
-from typing import Dict, Type
-from src.core.interface import BaseDatasetReader
+from typing import Type, Dict, Any
 
 class AdapterRegistry:
-    _adapters: Dict[str, Type[BaseDatasetReader]] = {}
+    _registry: Dict[str, Type] = {}
 
     @classmethod
     def register(cls, name: str):
-        """装饰器：将 Adapter 注册到全局字典中"""
-        def wrapper(adapter_cls: Type[BaseDatasetReader]):
-            cls._adapters[name] = adapter_cls
+        def decorator(adapter_cls):
+            cls._registry[name] = adapter_cls
             return adapter_cls
-        return wrapper
+        return decorator
 
     @classmethod
-    def get_class(cls, name: str) -> Type[BaseDatasetReader]:
-        if name not in cls._adapters:
+    def get_class(cls, name: str) -> Type:
+        if name not in cls._registry:
             raise ValueError(f"未注册的 Adapter 类型: {name}")
-        return cls._adapters[name]
+        return cls._registry[name]

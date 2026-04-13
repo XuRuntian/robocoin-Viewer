@@ -1,3 +1,4 @@
+# src/adapters/unitree_adapter.py
 import json
 import numpy as np
 import cv2
@@ -13,6 +14,12 @@ class UnitreeAdapter(BaseDatasetReader):
         self.root_path = None
         self.current_dir = None
         self.data_list = [] 
+        
+        # 1. 基础配置标准化
+        self.camera_map = getattr(self.config, 'image_keys_map', {}) or {}
+        self.arm_groups = getattr(self.config, 'arm_groups', {}) or {}
+        self.base_map = getattr(self.config, 'state_keys_map', {}) or {}
+        
         self.fps = 30.0
         self.image_keys = []
         
@@ -28,9 +35,7 @@ class UnitreeAdapter(BaseDatasetReader):
         else:
             self.episode_files = sorted(list(self.root_path.rglob("data.json")))
 
-        if not self.episode_files:
-            print(f"❌ [Unitree] 找不到 data.json")
-            return False
+        if not self.episode_files: return False
 
         print(f"✅ [Unitree] 扫描到 {len(self.episode_files)} 条轨迹")
         try:
@@ -66,45 +71,41 @@ class UnitreeAdapter(BaseDatasetReader):
             
         first = self.data_list[0]
         
-        # 💡 修复：更新 image_keys 为配置映射的名字
-        if self.config and self.config.image_keys_map:
-            self.image_keys = list(self.config.image_keys_map.keys())
+        if self.camera_map:
+            self.image_keys = list(self.camera_map.keys())
         else:
             self.image_keys = list(first["colors"].keys()) if "colors" in first else ["color_0", "color_1"]
 
-    def get_total_episodes(self) -> int:
-        return len(self.episode_files)
+    def get_total_episodes(self) -> int: return len(self.episode_files)
+    def get_length(self) -> int: return len(self.data_list)
+    def get_all_sensors(self) -> List[str]: return self.image_keys
 
-    def get_length(self) -> int:
-        return len(self.data_list)
-
-    def get_all_sensors(self) -> List[str]:
-        return self.image_keys
-
-    def get_frame(self, index: int) -> FrameData:
+    def get_frame(self, index: int, specific_cameras: Optional[List[str]] = None) -> FrameData:
         if index >= len(self.data_list): return None
         frame_dict = self.data_list[index]
         images = {}
         
+        keys_to_fetch = specific_cameras if specific_cameras else self.image_keys
+        
         if "colors" in frame_dict:
-            # 💡 修复：移除多余的嵌套循环，直接使用 mapping 遍历一次！
-            mapping = self.config.image_keys_map if (self.config and self.config.image_keys_map) else {k: k for k in frame_dict["colors"].keys()}
+            mapping = self.camera_map if self.camera_map else {k: k for k in frame_dict["colors"].keys()}
             
-            for std_cam_name, original_cam_name in mapping.items():
+            for std_cam_name in keys_to_fetch:
+                original_cam_name = mapping.get(std_cam_name, std_cam_name)
                 if original_cam_name in frame_dict["colors"]:
                     rel_path = frame_dict["colors"][original_cam_name]
                     if rel_path:
                         fp = self.current_dir / rel_path
                         if fp.exists():
                             img = cv2.imread(str(fp))
-                            if img is not None: 
-                                images[std_cam_name] = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                            if img is not None: images[std_cam_name] = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         state = {}
         try:
             if "states" in frame_dict:
                 source = frame_dict["states"]
                 qpos_list = []
+                # TODO: 未来可像 dasmcap_adapter 那样，用 self.arm_groups 动态组装这里
                 for part in ["left_arm", "right_arm", "left_ee", "right_ee", "head", "body"]:
                     if part in source and "qpos" in source[part]: qpos_list.extend(source[part]["qpos"])
                 if qpos_list: state['qpos'] = np.array(qpos_list)
@@ -122,5 +123,4 @@ class UnitreeAdapter(BaseDatasetReader):
             return str(self.episode_files[self.current_episode_idx].parent)
         return None
     
-    def close(self):
-        pass
+    def close(self): pass

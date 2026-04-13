@@ -8,11 +8,13 @@ from pynput import keyboard
 from src.core.factory import ReaderFactory
 
 class DatasetReviewer:
-    def __init__(self, visualizer):
+    def __init__(self, visualizer, rule_name=None):
         """
         :param visualizer: RerunVisualizer 实例
+        :param rule_name: 数据解析规则名称
         """
         self.viz = visualizer
+        self.rule_name = rule_name
         self.lock = threading.Lock()
         self.bad_datasets = [] 
         self.current_idx = 0            # 当前数据集文件夹的索引
@@ -82,7 +84,7 @@ class DatasetReviewer:
             if self.current_reader:
                 self.current_reader.close()
                 
-            self.current_reader = ReaderFactory.get_reader(path)
+            self.current_reader = ReaderFactory.get_reader(path, rule_name=self.rule_name)
             if self.current_reader and self.current_reader.load(path):
                 self.current_path = path
                 # 调用你新增的 get_total_episodes()

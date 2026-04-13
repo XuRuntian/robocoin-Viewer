@@ -1358,6 +1358,19 @@ wheels = [
 ]
 
 [[package]]
+name = "mcap-protobuf-support"
+version = "0.5.4"
+source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple" }
+dependencies = [
+    { name = "mcap" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/cc/8e/98af824adce25082f1c7fb8e8aab48b1678a370f97633a55bfb06c40e3fd/mcap_protobuf_support-0.5.4.tar.gz", hash = "sha256:3af2de2c2dbda9d1dbb1a526d2ad0cf3604ab44947dd1c99a52a2f990b1eb308", size = 7059, upload-time = "2025-12-24T21:22:57.716Z" }
+wheels = [
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/74/ee/cb4beace2bbaf3877848dbc555366c5a72ec1dabba5d620bf746143d91c4/mcap_protobuf_support-0.5.4-py3-none-any.whl", hash = "sha256:072f83b7b147b5faa25df21c175cbf6e53bf959f8a6aea534167055bc4526649", size = 7286, upload-time = "2025-12-24T21:22:56.393Z" },
+]
+
+[[package]]
 name = "mcap-ros2-support"
 version = "0.5.7"
 source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple" }
@@ -2936,6 +2949,7 @@ dependencies = [
     { name = "lerobot" },
     { name = "lz4" },
     { name = "mcap" },
+    { name = "mcap-protobuf-support" },
     { name = "mcap-ros2-support" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple" }, marker = "python_full_version >= '3.11'" },
@@ -2960,6 +2974,7 @@ requires-dist = [
     { name = "lerobot", specifier = ">=0.4.3" },
     { name = "lz4", specifier = ">=4.4.5" },
     { name = "mcap", specifier = ">=1.3.1" },
+    { name = "mcap-protobuf-support", specifier = ">=0.5.4" },
     { name = "mcap-ros2-support", specifier = ">=0.5.7" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "openai", specifier = ">=2.24.0" },

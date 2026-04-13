@@ -3,3 +3,4 @@ from . import ros_adapter
 from . import lerobot_adapter
 from . import unitree_adapter
 from . import folder_adapter
+from . import dasmcap_adapter

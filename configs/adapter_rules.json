@@ -9,24 +9,6 @@
       "ignore_topics": ["depth", "compressed"]
     }
   },
-  "ZhiPingFang": {
-    "base_type": "HDF5", 
-    "match_rules": {
-      "path_keywords": ["智平方", "ZhiPingFang"],
-      "file_extensions": [".h5", ".hdf5"]
-    },
-    "length_reference_key": "observations/timestamp",
-    "image_keys_map": {
-      "cam_head": "observations/camera/rgb/head/images",
-      "cam_right": "observations/camera/rgb/right/images",
-      "cam_left": "observations/camera/rgb/left/images",
-      "cam_chest": "observations/camera/rgb/chest/images"
-    },
-    "state_keys_map": {
-      "qpos_left": "observations/arm/left/joints",
-      "qpos_right": "observations/arm/right/joints"
-    }
-  },
 
   "Example_ROS_Custom": {
     "_comment": "【示例】自定义 ROS 数据包解析规则，将底层的复杂 Topic 映射为简单的标准名称",
@@ -41,47 +23,41 @@
     }
   },
 
-  "Example_LeRobot_Aloha": {
-    "_comment": "【示例】针对 Aloha 设备的 LeRobot 格式自定义映射。覆盖原有的 observations.xxx 路径",
-    "base_type": "LeRobot",
-    "match_rules": {
-      "path_keywords": ["aloha", "aloha_mobile"]
+  "umi_dual_arm": {
+      "base_type": "DASMCAP",
+      "cameras": {
+          "/robot0/sensor/camera0/compressed": "left_wrist_cam",
+          "/robot1/sensor/camera0/compressed": "right_wrist_cam"
+      },
+      "arm_groups": {
+          "left": {
+              "pose_topic": "/robot0/vio/eef_pose",
+              "gripper_topic": "/robot0/sensor/magnetic_encoder"
+          },
+          "right": {
+              "pose_topic": "/robot1/vio/eef_pose", 
+              "gripper_topic": "/robot1/sensor/magnetic_encoder" 
+          }
+      },
+      "base": null 
     },
-    "image_keys_map": {
-      "cam_high": "observation.images.cam_high",
-      "cam_right_wrist": "observation.images.cam_right_wrist",
-      "cam_left_wrist": "observation.images.cam_left_wrist"
+    
+  "ZhiPingFang": {
+    "base_type": "HDF5", 
+    "length_reference_key": "observations/arm/left/joints",
+    "cameras": {
+      "cam_head": "observations/camera/rgb/chest/images",
+      "cam_right": "observations/camera/rgb/left/images",
+      "cam_left": "observations/camera/rgb/left/images",
+      "cam_chest": "observations/camera/rgb/chest/images"
     },
-    "state_keys_map": {
-      "qpos": "observation.state",
-      "action": "action"
-    }
-  },
-
-  "Example_Unitree_Custom": {
-    "_comment": "【示例】宇树 (Unitree) 数据的特定相机重命名，将原本的 color_0 转换为具有业务语义的名字",
-    "base_type": "Unitree",
-    "match_rules": {
-      "path_keywords": ["Unitree_G1"]
-    },
-    "image_keys_map": {
-      "head_camera": "color_0",
-      "chest_camera": "color_1"
-    }
-  },
-
-  "Example_DAS_Ego_Dataset": {
-    "_comment": "【示例】ego数据",
-    "base_type": "Ego",
-    "match_rules": {
-      "path_keywords": ["DAS", "ego_record"]
-    },
-    "extra_options": {
-      "enable_undistort": true 
-    },
-    "image_keys_map": {
-      "cam_head": "camera0",
-      "cam_head_1": "camera1"
+    "arm_groups": {
+      "left": {
+        "qpos": "observations/arm/left/joints"
+      },
+      "right": {
+        "qpos": "observations/arm/right/joints"
+      }
     }
   }
 }
