@@ -1,3 +1,4 @@
+# src/core/interface.py
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass, field
@@ -5,13 +6,24 @@ import numpy as np
 
 @dataclass
 class AdapterConfig:
+    # 基础探测与匹配
     base_type: str = ""
     match_rules: Dict[str, Any] = field(default_factory=dict)
+    
+    # 视觉桶 (Cameras)
     image_keys_map: Dict[str, str] = field(default_factory=dict)
+    
+    # 手臂桶 (Arms & Grippers) - 💡 新增这个核心字段
+    arm_groups: Dict[str, Any] = field(default_factory=dict)
+    
+    # 状态桶/底座桶 (Base / Other states)
     state_keys_map: Dict[str, str] = field(default_factory=dict)
+    
+    # 长度参考
     length_reference_key: str = ""
+    
+    # 额外配置 (如 enable_undistort 等开关)
     extra_options: Dict[str, Any] = field(default_factory=dict)
-
 @dataclass
 class FrameData:
     """

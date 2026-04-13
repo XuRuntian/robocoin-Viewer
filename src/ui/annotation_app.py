@@ -254,8 +254,8 @@ def setup_comparison_layout(sample_names, cameras):
     blueprint = rrb.Blueprint(rrb.Horizontal(*columns), collapse_panels=True)
     rr.send_blueprint(blueprint)
 
-def run_parallel_preview(sample_paths):
-    temp_reader = ReaderFactory.get_reader(sample_paths[0])
+def run_parallel_preview(sample_paths, rule_name=None):
+    temp_reader = ReaderFactory.get_reader(sample_paths[0], rule_name=rule_name)
     temp_reader.load(sample_paths[0])
     cameras = temp_reader.get_all_sensors()
     print(f"DEBUG: Cameras detected for preview: {cameras}")  # 调试输出，确认相机列表
@@ -268,7 +268,7 @@ def run_parallel_preview(sample_paths):
     readers = []
     max_len = 0
     for p in sample_paths:
-        r = ReaderFactory.get_reader(p)
+        r = ReaderFactory.get_reader(p, rule_name=rule_name)
         r.load(p)
         readers.append(r)
         if r.get_length() > max_len: 
@@ -314,7 +314,19 @@ def main():
         st.markdown("---")
 
         st.header("📂 数据源与配置项")
+        all_rules = ReaderFactory.load_rules()
+        valid_rules = [k for k in all_rules.keys() if not k.startswith("_") and not k.startswith("Example_")]
         
+        # 渲染下拉框
+        rule_options = ["自动探测 (Auto-Detect)"] + valid_rules
+        selected_rule_ui = st.selectbox(
+            "🛠️ 数据解析规则 (Adapter Rule)", 
+            options=rule_options,
+            help="默认自动根据路径和文件特征探测。如有需要，可强制指定解析规则。"
+        )
+        
+        # 存入 session_state (选了 Auto 就设为 None，交给 Factory 内部处理)
+        st.session_state['active_rule'] = None if selected_rule_ui == "自动探测 (Auto-Detect)" else selected_rule_ui
         col1, col2 = st.columns([4, 1])
         with col1:
             vocab_input = st.text_input("Schema 配置文件 (JSON):", value=st.session_state['vocab_path'])
@@ -458,7 +470,7 @@ def main():
             if st.button("🚀 启动人工审核 (Rerun)"):
                 with st.spinner("请在弹出的 Rerun 窗口中操作 (使用键盘 N/P 切换, B 标记异常, Q/Esc 退出)..."):
                     viz = RerunVisualizer("RoboCoin_Review")
-                    reviewer = DatasetReviewer(viz)
+                    reviewer = DatasetReviewer(viz, rule_name=st.session_state.get('active_rule'))
                     print("DEBUG: valid_paths before review:", valid_paths)  # 调试输出，确认传入的路径列表
                     bad_datasets = reviewer.start_review(valid_paths)
 
@@ -492,7 +504,7 @@ def main():
                     if len(valid_paths) > 1: indices.append(len(valid_paths)-1)
                     if len(valid_paths) > 2: indices.insert(1, len(valid_paths)//2)
                     sample_paths = [valid_paths[i] for i in indices]
-                    run_parallel_preview(sample_paths)
+                    run_parallel_preview(sample_paths, st.session_state.get('active_rule'))
 
     # ==========================================
     # TAB 2: 元数据标注 (生成 YAML)
