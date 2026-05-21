@@ -128,6 +128,9 @@ class ReaderFactory:
             "video_filename_templates",
             "image_source",
             "hdf5_image_source",
+            "image_color_order",
+            "hdf5_image_color_order",
+            "video_color_order",
             "blank_image_fallback",
             "blank_image_threshold",
         ):

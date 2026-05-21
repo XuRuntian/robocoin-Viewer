@@ -31,12 +31,18 @@ class HDF5Adapter(BaseDatasetReader):
         ).lower()
         self.blank_image_fallback = bool(extra_opts.get("blank_image_fallback", True))
         self.blank_image_threshold = float(extra_opts.get("blank_image_threshold", 0.0))
+        self.hdf5_image_color_order = extra_opts.get(
+            "hdf5_image_color_order",
+            extra_opts.get("image_color_order", "rgb"),
+        )
+        self.video_color_order = extra_opts.get("video_color_order", "bgr")
         self.video_map = extra_opts.get("videos", extra_opts.get("video_map", {})) or {}
         self.video_root = extra_opts.get("video_root", extra_opts.get("videos_root", "videos"))
         self.video_filename_templates = extra_opts.get(
             "video_filename_templates",
             ["{camera}.mp4", "{camera}.avi", "{camera}.mov", "{camera}.mkv"],
         )
+        self._warned_invalid_color_orders = set()
         
         self.episode_files = [] 
         self.current_episode_idx = 0
@@ -214,7 +220,48 @@ class HDF5Adapter(BaseDatasetReader):
         img_data = np.asarray(raw_data)
         if img_data.ndim == 3 and img_data.shape[0] == 3:
             img_data = np.transpose(img_data, (1, 2, 0))
-        return img_data
+        return self._convert_image_to_rgb(
+            img_data,
+            self.hdf5_image_color_order,
+            std_cam_name,
+            "hdf5_image_color_order",
+        )
+
+    def _get_color_order(self, color_order_config, std_cam_name: str, option_name: str) -> str:
+        color_order = color_order_config
+        if isinstance(color_order, dict):
+            color_order = color_order.get(std_cam_name, color_order.get("*", "rgb"))
+        color_order = str(color_order or "rgb").lower().removesuffix("8")
+        if len(color_order) == 3 and sorted(color_order) == ["b", "g", "r"]:
+            return color_order
+
+        warning_key = (option_name, std_cam_name, color_order)
+        if warning_key not in self._warned_invalid_color_orders:
+            logger.warning(
+                "⚠️ [HDF5] 不支持的 %s=%r，相机 %s 将按 RGB 处理。",
+                option_name,
+                color_order,
+                std_cam_name,
+            )
+            self._warned_invalid_color_orders.add(warning_key)
+        return "rgb"
+
+    def _convert_image_to_rgb(
+        self,
+        img_data: np.ndarray,
+        color_order_config,
+        std_cam_name: str,
+        option_name: str,
+    ) -> np.ndarray:
+        if img_data.ndim != 3 or img_data.shape[-1] != 3:
+            return img_data
+
+        color_order = self._get_color_order(color_order_config, std_cam_name, option_name)
+        if color_order == "rgb":
+            return img_data
+
+        channel_indices = [color_order.index(channel) for channel in "rgb"]
+        return img_data[..., channel_indices]
 
     def _is_blank_image(self, img_data: np.ndarray) -> bool:
         if img_data is None:
@@ -360,7 +407,12 @@ class HDF5Adapter(BaseDatasetReader):
         ret, frame = cap.read()
         if not ret:
             return None
-        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return self._convert_image_to_rgb(
+            frame,
+            self.video_color_order,
+            std_cam_name,
+            "video_color_order",
+        )
 
     def _get_first_video_length(self) -> int:
         for cap in self.video_handles.values():

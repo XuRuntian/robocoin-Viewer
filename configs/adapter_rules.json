@@ -63,6 +63,8 @@
     "base_type": "HDF5",
     "length_reference_key": "observations/timestamp",
     "image_source": "auto",
+    "hdf5_image_color_order": "rgb",
+    "video_color_order": "rgb",
     "blank_image_fallback": true,
     "cameras": {
       "cam_head": "observations/camera/rgb/head/images",
