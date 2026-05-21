@@ -7,6 +7,9 @@ from typing import List, Dict, Any, Optional
 from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
 from src.core.registry import AdapterRegistry
 
+import logging
+logger = logging.getLogger(__name__)
+
 @AdapterRegistry.register("RawFolder")
 class FolderAdapter(BaseDatasetReader):
     def __init__(self, config: Optional[AdapterConfig] = None):
@@ -44,10 +47,10 @@ class FolderAdapter(BaseDatasetReader):
                     self.episode_dirs.append(d)
                     
         if not self.episode_dirs:
-            print("❌ [Folder] 未发现包含图片的目录")
+            logger.error("❌ [Folder] 未发现包含图片的目录")
             return False
             
-        print(f"✅ [Folder] 扫描到 {len(self.episode_dirs)} 个图片序列文件夹")
+        logger.info(f"✅ [Folder] 扫描到 {len(self.episode_dirs)} 个图片序列文件夹")
         self.set_episode(0)
         return True
 
@@ -56,7 +59,7 @@ class FolderAdapter(BaseDatasetReader):
         self.current_episode_idx = episode_idx
         
         target_dir = self.episode_dirs[episode_idx]
-        print(f"🔄 [Folder] 切换至 Episode {episode_idx} ({target_dir.name})")
+        logger.info(f"🔄 [Folder] 切换至 Episode {episode_idx} ({target_dir.name})")
         
         search_dirs = [target_dir, target_dir / "colors"]
         img_files = []

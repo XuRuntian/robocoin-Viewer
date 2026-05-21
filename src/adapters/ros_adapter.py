@@ -10,6 +10,9 @@ from rosbags.typesys import Stores, get_typestore
 from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
 from src.core.registry import AdapterRegistry
 
+import logging
+logger = logging.getLogger(__name__)
+
 @AdapterRegistry.register("ROS")
 class RosAdapter(BaseDatasetReader):
     def __init__(self, config: Optional[AdapterConfig] = None):
@@ -47,7 +50,7 @@ class RosAdapter(BaseDatasetReader):
             
         if not self.episode_files: return False
             
-        print(f"✅ [ROS] 扫描到 {len(self.episode_files)} 个数据包")
+        logger.info(f"✅ [ROS] 扫描到 {len(self.episode_files)} 个数据包")
         self.set_episode(0)
         return True
 
@@ -104,7 +107,7 @@ class RosAdapter(BaseDatasetReader):
                 
             self._length = len(self.timestamps)
         except Exception as e:
-            print(f"🚨 [ROS 警告] 轨迹加载失败: {e}")
+            logger.error(f"🚨 [ROS 警告] 轨迹加载失败: {e}")
             self.close()
 
     def get_total_episodes(self) -> int: return len(self.episode_files)
