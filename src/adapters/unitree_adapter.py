@@ -7,6 +7,9 @@ from typing import List, Dict, Any, Optional
 from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
 from src.core.registry import AdapterRegistry
 
+import logging
+logger = logging.getLogger(__name__)
+
 @AdapterRegistry.register("Unitree")
 class UnitreeAdapter(BaseDatasetReader):
     def __init__(self, config: Optional[AdapterConfig] = None):
@@ -37,12 +40,12 @@ class UnitreeAdapter(BaseDatasetReader):
 
         if not self.episode_files: return False
 
-        print(f"✅ [Unitree] 扫描到 {len(self.episode_files)} 条轨迹")
+        logger.info(f"✅ [Unitree] 扫描到 {len(self.episode_files)} 条轨迹")
         try:
             self.set_episode(0)
             return True
         except Exception as e:
-            print(f"❌ [Unitree] 初始化失败: {e}")
+            logger.error(f"❌ [Unitree] 初始化失败: {e}")
             return False
 
     def set_episode(self, episode_idx: int):
@@ -53,7 +56,7 @@ class UnitreeAdapter(BaseDatasetReader):
         self.current_dir = json_file.parent
         self.data_list = []
         
-        print(f"🔄 [Unitree] 切换至 Episode {episode_idx} ({self.current_dir.name})")
+        logger.info(f"🔄 [Unitree] 切换至 Episode {episode_idx} ({self.current_dir.name})")
         with open(json_file, 'r') as f: content = json.load(f)
         
         if isinstance(content, dict) and "info" in content:

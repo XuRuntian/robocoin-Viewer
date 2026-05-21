@@ -14,6 +14,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
 from src.core.registry import AdapterRegistry
+import logging
+logger = logging.getLogger(__name__)
 
 class VideoDecoder:
     """参考 das-datakit 的 H264 连续解码器 (开启了内部多线程)"""
@@ -77,7 +79,7 @@ class DASMCAPAdapter(BaseDatasetReader):
         elif self.root_path.is_dir():
             self.episode_files.extend(sorted(self.root_path.rglob("*.mcap")))
         if not self.episode_files:
-            print("❌ [DASMCAPAdapter] 未找到任何 .mcap 文件。")
+            logger.error("❌ [DASMCAPAdapter] 未找到任何 .mcap 文件。")
             return False
         self.set_episode(0)
         return True
@@ -87,7 +89,7 @@ class DASMCAPAdapter(BaseDatasetReader):
         self.close()  
         self.current_episode_idx = episode_idx
         target_file = self.episode_files[episode_idx]
-        print(f"🔄 [DASMCAPAdapter] 解析数据流: {target_file.name}")
+        logger.info(f"🔄 [DASMCAPAdapter] 解析数据流: {target_file.name}")
         
         all_arm_topics = []
         for g in self.arm_groups.values():
@@ -156,7 +158,7 @@ class DASMCAPAdapter(BaseDatasetReader):
                 self.timestamps = tms
 
         self._build_interpolators()
-        print(f"✅ [DASMCAPAdapter] Episode 加载完毕，长度: {len(self.timestamps)} 帧")
+        logger.info(f"✅ [DASMCAPAdapter] Episode 加载完毕，长度: {len(self.timestamps)} 帧")
 
     def _build_interpolators(self):
         self.interpolators.clear()
