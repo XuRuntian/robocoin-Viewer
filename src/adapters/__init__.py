@@ -1,6 +1,18 @@
-from . import hdf5_adapter
-from . import ros_adapter
-from . import lerobot_adapter
-from . import unitree_adapter
-from . import folder_adapter
-from . import dasmcap_adapter
+import importlib
+import logging
+
+logger = logging.getLogger(__name__)
+
+for module_name in (
+    "hdf5_adapter",
+    "ros_adapter",
+    "lerobot_adapter",
+    "unitree_adapter",
+    "folder_adapter",
+    "dasmcap_adapter",
+    "singorix_adapter",
+):
+    try:
+        importlib.import_module(f"{__name__}.{module_name}")
+    except ImportError as exc:
+        logger.warning("跳过 adapter %s，可选依赖缺失: %s", module_name, exc)

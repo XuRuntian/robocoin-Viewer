@@ -23,6 +23,22 @@
     }
   },
 
+  "Example_HDF5_With_Videos": {
+    "_comment": "【示例】H5 内 images 是占位/全 0 时，从外部 videos 目录读取真实图像。videos 的 key 是标准相机名，value 是相对 HDF5 文件所在目录的视频路径。",
+    "base_type": "HDF5",
+    "length_reference_key": "action",
+    "image_source": "auto",
+    "blank_image_fallback": true,
+    "cameras": {
+      "cam_head": "observations/images/cam_head",
+      "cam_wrist": "observations/images/cam_wrist"
+    },
+    "videos": {
+      "cam_head": "videos/cam_head.mp4",
+      "cam_wrist": "videos/cam_wrist.mp4"
+    }
+  },
+
   "umi_dual_arm": {
       "base_type": "DASMCAP",
       "cameras": {

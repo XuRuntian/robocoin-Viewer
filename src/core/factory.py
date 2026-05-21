@@ -120,6 +120,19 @@ class ReaderFactory:
 
         # --- 后续实例化逻辑保持不变 ---
         extra_opts = config_dict.get("extra_options", {}).copy() if isinstance(config_dict, dict) else {}
+        for passthrough_key in (
+            "videos",
+            "video_map",
+            "video_root",
+            "videos_root",
+            "video_filename_templates",
+            "image_source",
+            "hdf5_image_source",
+            "blank_image_fallback",
+            "blank_image_threshold",
+        ):
+            if passthrough_key in config_dict and passthrough_key not in extra_opts:
+                extra_opts[passthrough_key] = config_dict[passthrough_key]
         
         adapter_config = AdapterConfig(
             length_reference_key=config_dict.get("length_reference_key", ""),
