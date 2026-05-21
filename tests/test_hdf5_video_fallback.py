@@ -100,6 +100,50 @@ def test_hdf5_video_source_can_define_video_only_camera(tmp_path):
     assert image[..., 2].mean() > 200
 
 
+def test_hdf5_embedded_video_dataset_can_be_used_as_image_source(tmp_path):
+    h5_path = tmp_path / "episode_000000.hdf5"
+    video_path = tmp_path / "cam_head.avi"
+
+    red_bgr = np.zeros((8, 8, 3), dtype=np.uint8)
+    red_bgr[..., 2] = 255
+    _write_test_video(video_path, [red_bgr])
+    video_bytes = np.frombuffer(video_path.read_bytes(), dtype=np.uint8)
+
+    with h5py.File(h5_path, "w") as h5_file:
+        h5_file.create_dataset("action", data=np.zeros((1, 3), dtype=np.float32))
+        camera_group = h5_file.create_group("observations/camera/rgb/head")
+        camera_group.create_dataset(
+            "images",
+            data=np.zeros((0,), dtype=h5py.vlen_dtype(np.dtype("uint8"))),
+        )
+        camera_group.create_dataset("video", data=video_bytes)
+
+    reader = HDF5Adapter(
+        AdapterConfig(
+            length_reference_key="action",
+            image_keys_map={"cam_head": "observations/camera/rgb/head/images"},
+            extra_options={
+                "image_source": "auto",
+                "videos": {"cam_head": "observations/camera/rgb/head/video"},
+            },
+        )
+    )
+
+    try:
+        assert reader.load(str(h5_path))
+        frame = reader.get_frame(0)
+        temp_files = list(reader.video_temp_files.values())
+        assert temp_files and temp_files[0].exists()
+    finally:
+        reader.close()
+
+    assert not temp_files[0].exists()
+    image = frame.images["cam_head"]
+    assert image[..., 0].mean() > 200
+    assert image[..., 1].mean() < 50
+    assert image[..., 2].mean() < 50
+
+
 def test_factory_passes_hdf5_video_options_from_rule(monkeypatch):
     monkeypatch.setattr(
         ReaderFactory,
@@ -110,7 +154,7 @@ def test_factory_passes_hdf5_video_options_from_rule(monkeypatch):
                 "length_reference_key": "action",
                 "image_source": "auto",
                 "cameras": {"cam_head": "observations/images/cam_head"},
-                "videos": {"cam_head": "videos/cam_head.mp4"},
+                "videos": {"cam_head": "observations/camera/rgb/head/video"},
             }
         },
     )
@@ -119,5 +163,5 @@ def test_factory_passes_hdf5_video_options_from_rule(monkeypatch):
 
     assert isinstance(reader, HDF5Adapter)
     assert reader.camera_map == {"cam_head": "observations/images/cam_head"}
-    assert reader.video_map == {"cam_head": "videos/cam_head.mp4"}
+    assert reader.video_map == {"cam_head": "observations/camera/rgb/head/video"}
     assert reader.image_source == "auto"

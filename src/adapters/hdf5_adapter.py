@@ -2,6 +2,7 @@
 import h5py
 import cv2
 import numpy as np
+import tempfile
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from src.core.interface import BaseDatasetReader, FrameData, AdapterConfig
@@ -41,6 +42,7 @@ class HDF5Adapter(BaseDatasetReader):
         self.current_episode_idx = 0
         self.image_keys = []
         self.video_handles = {}
+        self.video_temp_files = {}
 
     def _find_dataset_length(self, h5_node) -> int:
         if isinstance(h5_node, h5py.Dataset):
@@ -183,6 +185,9 @@ class HDF5Adapter(BaseDatasetReader):
             return None
 
         dataset = self.file[h5_path]
+        if dataset.ndim > 0 and dataset.shape[0] <= index:
+            return None
+
         raw_data = dataset[index]
         if dataset.ndim == 1:
             buffer = np.frombuffer(raw_data, dtype=np.uint8)
@@ -210,6 +215,8 @@ class HDF5Adapter(BaseDatasetReader):
         self.video_handles.clear()
         for std_cam_name in self.image_keys:
             video_path = self._resolve_video_path(std_cam_name, target_file)
+            if video_path is None:
+                video_path = self._materialize_hdf5_video(std_cam_name)
             if video_path is None:
                 continue
 
@@ -263,6 +270,69 @@ class HDF5Adapter(BaseDatasetReader):
         root = str(self.video_root).strip("/")
         return [f"{root}/{tpl}" if root else tpl for tpl in self.video_filename_templates]
 
+    def _materialize_hdf5_video(self, std_cam_name: str) -> Optional[Path]:
+        h5_video_path = self._resolve_hdf5_video_path(std_cam_name)
+        if not h5_video_path:
+            return None
+
+        try:
+            raw_video = np.asarray(self.file[h5_video_path][()], dtype=np.uint8)
+        except Exception as exc:
+            logger.warning(f"⚠️ [HDF5] 读取内嵌视频失败 {h5_video_path}: {exc}")
+            return None
+
+        suffix = self._guess_video_suffix(raw_video)
+        temp_file = tempfile.NamedTemporaryFile(
+            prefix=f"robocoin_hdf5_{std_cam_name}_",
+            suffix=suffix,
+            delete=False,
+        )
+        with temp_file:
+            temp_file.write(raw_video.tobytes())
+
+        temp_path = Path(temp_file.name)
+        self.video_temp_files[std_cam_name] = temp_path
+        return temp_path
+
+    def _resolve_hdf5_video_path(self, std_cam_name: str) -> Optional[str]:
+        configured = self.video_map.get(std_cam_name)
+        candidates = []
+        if isinstance(configured, dict):
+            candidates.extend(
+                value for value in (
+                    configured.get("hdf5_path"),
+                    configured.get("h5_path"),
+                    configured.get("dataset"),
+                    configured.get("path"),
+                    configured.get("file"),
+                    configured.get("template"),
+                ) if value
+            )
+        elif isinstance(configured, str):
+            candidates.append(configured)
+        elif isinstance(configured, list):
+            candidates.extend(configured)
+
+        h5_path = self.camera_map.get(std_cam_name)
+        if h5_path:
+            candidates.append(h5_path.replace("/images", "/video"))
+
+        for candidate in candidates:
+            candidate = str(candidate)
+            if candidate in self.file and isinstance(self.file[candidate], h5py.Dataset):
+                return candidate
+        return None
+
+    def _guess_video_suffix(self, raw_video: np.ndarray) -> str:
+        header = raw_video[:16].tobytes()
+        if b"ftyp" in header:
+            return ".mp4"
+        if header.startswith(b"RIFF"):
+            return ".avi"
+        if header.startswith(b"\x1aE\xdf\xa3"):
+            return ".mkv"
+        return ".mp4"
+
     def _read_video_image(self, std_cam_name: str, index: int) -> Optional[np.ndarray]:
         cap = self.video_handles.get(std_cam_name)
         if cap is None:
@@ -293,6 +363,12 @@ class HDF5Adapter(BaseDatasetReader):
         for cap in self.video_handles.values():
             cap.release()
         self.video_handles.clear()
+        for temp_path in self.video_temp_files.values():
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(f"⚠️ [HDF5] 临时视频删除失败: {temp_path}")
+        self.video_temp_files.clear()
         if self.file:
             self.file.close()
             self.file = None
