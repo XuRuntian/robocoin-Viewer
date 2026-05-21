@@ -89,7 +89,6 @@
       }
     },
     "base": {
-      "action": "action",
       "chassis_pose": "observations/chassis/pose",
       "chassis_vel": "observations/chassis/vel",
       "neck_joints": "observations/neck/joints",

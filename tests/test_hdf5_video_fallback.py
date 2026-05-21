@@ -165,3 +165,30 @@ def test_factory_passes_hdf5_video_options_from_rule(monkeypatch):
     assert reader.camera_map == {"cam_head": "observations/images/cam_head"}
     assert reader.video_map == {"cam_head": "observations/camera/rgb/head/video"}
     assert reader.image_source == "auto"
+
+
+def test_hdf5_state_mapping_skips_groups(tmp_path):
+    h5_path = tmp_path / "episode_000000.hdf5"
+    with h5py.File(h5_path, "w") as h5_file:
+        h5_file.create_group("action")
+        h5_file.create_dataset("observations/timestamp", data=np.zeros((1, 1), dtype=np.float32))
+        h5_file.create_dataset("observations/chassis/pose", data=np.ones((1, 3), dtype=np.float32))
+
+    reader = HDF5Adapter(
+        AdapterConfig(
+            length_reference_key="observations/timestamp",
+            state_keys_map={
+                "action": "action",
+                "chassis_pose": "observations/chassis/pose",
+            },
+        )
+    )
+
+    try:
+        assert reader.load(str(h5_path))
+        frame = reader.get_frame(0)
+    finally:
+        reader.close()
+
+    assert "action" not in frame.state
+    assert np.array_equal(frame.state["chassis_pose"], np.ones(3, dtype=np.float32))

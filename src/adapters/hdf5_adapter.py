@@ -155,17 +155,19 @@ class HDF5Adapter(BaseDatasetReader):
         
         # --- 修复点 A: 处理 base_map (对应 JSON 中的 "base" 字段) ---
         for std_state_name, h5_path in self.base_map.items():
-            if h5_path in self.file:
-                 state_data[std_state_name] = self.file[h5_path][index]
+            value = self._read_hdf5_dataset_value(h5_path, index)
+            if value is not None:
+                state_data[std_state_name] = value
 
         # --- 修复点 B: 处理 arm_groups (对应 JSON 中的 "arm_groups" 字段) ---
         for arm_name, group_cfg in self.arm_groups.items():
             # 遍历 group 里的 key，比如 qpos, action 等
             for attr_name, h5_path in group_cfg.items():
-                if h5_path in self.file:
+                value = self._read_hdf5_dataset_value(h5_path, index)
+                if value is not None:
                     # 组合 key 名，例如 "left_qpos"
                     combined_key = f"{arm_name}_{attr_name}"
-                    state_data[combined_key] = self.file[h5_path][index]
+                    state_data[combined_key] = value
 
         return FrameData(timestamp=float(index), images=images, state=state_data)
 
@@ -178,6 +180,19 @@ class HDF5Adapter(BaseDatasetReader):
                     merged.append(name)
                     seen.add(name)
         return merged
+
+    def _read_hdf5_dataset_value(self, h5_path: str, index: int):
+        if not h5_path or h5_path not in self.file:
+            return None
+        node = self.file[h5_path]
+        if not isinstance(node, h5py.Dataset):
+            logger.warning(f"⚠️ [HDF5] 跳过非 Dataset 状态路径: {h5_path}")
+            return None
+        if node.ndim == 0:
+            return node[()]
+        if node.shape[0] <= index:
+            return None
+        return node[index]
 
     def _read_hdf5_image(self, std_cam_name: str, index: int) -> Optional[np.ndarray]:
         h5_path = self.camera_map.get(std_cam_name)
