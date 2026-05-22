@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import time
+import uuid
 import tkinter as tk
 from tkinter import filedialog
 import streamlit as st
@@ -56,6 +57,65 @@ def clean_editor_value(val):
     if isinstance(val, str) and " (" in val and val.endswith(")"):
         return val.split(" (")[0]
     return val
+
+def canonicalize_object_name(name):
+    """把物体名转成 canonical_id 前缀，如 'test tube rack' -> 'test_tube_rack'。"""
+    return "_".join(str(name).strip().lower().split())
+
+def default_canonical_id(object_name, anchor="main_body"):
+    if not object_name:
+        return ""
+    return f"{canonicalize_object_name(object_name)}:{anchor or 'main_body'}"
+
+def build_dataset_folder_name(dataset_name, dataset_name_id):
+    if dataset_name_id in ("", None):
+        return dataset_name
+    return f"{dataset_name}_{dataset_name_id}"
+
+def ensure_dataset_export_fields(data, dataset_dir=None):
+    """补齐导出 YAML 需要的稳定元信息，并按目标格式排列字段顺序。"""
+    enriched = dict(data)
+
+    if not enriched.get("dataset_uuid"):
+        enriched["dataset_uuid"] = str(uuid.uuid4())
+
+    if "dataset_name_id" not in enriched or enriched.get("dataset_name_id") in ("", None):
+        enriched["dataset_name_id"] = 0
+
+    if dataset_dir:
+        yaml_path = os.path.join(dataset_dir, "local_dataset_info.yaml")
+        enriched["yaml_file_path"] = yaml_path
+        enriched["data_path"] = dataset_dir
+
+    ordered_keys = [
+        "dataset_name",
+        "dataset_uuid",
+        "task_instruction",
+        "dataset_batch_number",
+        "env_type",
+        "scene_level1",
+        "scene_level2",
+        "target_sequence",
+        "atomic_actions",
+        "objects",
+        "operation_platform_height",
+        "device_model",
+        "end_effector_type",
+        "task_operation_type",
+        "tele_type",
+        "dataset_name_id",
+        "yaml_file_path",
+        "data_path",
+    ]
+
+    ordered = {}
+    for key in ordered_keys:
+        if key in enriched:
+            ordered[key] = enriched[key]
+    for key, value in enriched.items():
+        if key not in ordered:
+            ordered[key] = value
+    return ordered
 
 def render_field(field, current_data, all_fields=None):
     key = field["key"]
@@ -224,6 +284,84 @@ def render_field(field, current_data, all_fields=None):
                     "object_name": clean_editor_value(row["object_name"]),
                     "color": clean_editor_value(row["color"])
                 })
+        return cleaned
+
+    elif ftype == "target_sequence_table":
+        table_key = f"table_{key}"
+        source_key = field.get("source_key", "objects")
+        source_objects = current_data.get(source_key, [])
+        source_names = [obj.get("object_name") for obj in source_objects if obj.get("object_name")]
+
+        role_options = field.get("role_options", {})
+        role_display = list(role_options.keys())
+        default_role = field.get("default_role", next(iter(role_options), "target"))
+        default_anchor = field.get("default_anchor", "main_body")
+
+        if table_key not in st.session_state:
+            st.session_state[table_key] = [
+                {
+                    "canonical_id": default_canonical_id(name, default_anchor),
+                    "object_name": name,
+                    "role": default_role,
+                }
+                for name in source_names
+            ]
+
+        existing_names = [
+            row.get("object_name")
+            for row in st.session_state[table_key]
+            if row.get("object_name")
+        ]
+        object_options = []
+        for name in source_names + existing_names:
+            if name and name not in object_options:
+                object_options.append(name)
+
+        st.caption("按机器人与目标物体的交互顺序填写；canonical_id 可作为与物体 subject 绑定的锚点。")
+
+        column_config = {
+            "canonical_id": st.column_config.TextColumn(
+                "锚点 canonical_id",
+                help="默认格式为 object_name:main_body，例如 test_tube_rack:main_body。",
+                required=False,
+            ),
+            "object_name": st.column_config.SelectboxColumn(
+                "目标物体",
+                options=object_options,
+                required=True,
+            ) if object_options else st.column_config.TextColumn("目标物体", required=True),
+        }
+        if role_display:
+            column_config["role"] = st.column_config.SelectboxColumn(
+                "角色 role",
+                options=role_display,
+                required=True,
+            )
+        else:
+            column_config["role"] = st.column_config.TextColumn("角色 role", required=True)
+
+        edited = st.data_editor(
+            st.session_state[table_key],
+            num_rows="dynamic",
+            column_config=column_config,
+            width="stretch",
+            key=f"editor_{key}",
+        )
+
+        cleaned = []
+        for row in edited:
+            object_name = clean_editor_value(row.get("object_name", ""))
+            if not object_name:
+                continue
+            canonical_id = str(row.get("canonical_id") or "").strip()
+            if not canonical_id:
+                canonical_id = default_canonical_id(object_name, default_anchor)
+            cleaned.append({
+                "canonical_id": canonical_id,
+                "object_name": object_name,
+                "role": clean_editor_value(row.get("role", default_role)) or default_role,
+            })
+        st.session_state[table_key] = cleaned
         return cleaned
 
 def setup_comparison_layout(sample_names, cameras):
@@ -567,7 +705,13 @@ def main():
             if not collected_data.get("dataset_name") or collected_data.get("dataset_name") == st.session_state.get("prefix_dataset_name", ""):
                 st.error("请完整填写「数据集名称 (自动拼接)」中的动作名称（动词_名词）！")
             else:
-                st.session_state['preview_yaml_data'] = collected_data
+                preview_seed = ensure_dataset_export_fields(collected_data)
+                folder_name = build_dataset_folder_name(
+                    preview_seed["dataset_name"],
+                    preview_seed.get("dataset_name_id")
+                )
+                preview_dir = os.path.join(os.path.dirname(os.path.normpath(target_dir)), folder_name)
+                st.session_state['preview_yaml_data'] = ensure_dataset_export_fields(preview_seed, preview_dir)
                 st.session_state['show_preview'] = True
 
         if st.session_state.get('show_preview', False):
@@ -582,7 +726,11 @@ def main():
             if has_old_config:
                 st.warning("⚠️ 发现当前目录已存在旧的配置文件，继续生成将会 **覆盖** 这些文件！")
             
-            st.warning(f"⚠️ 确认保存后，当前数据文件夹将被重命名为：\n`{final_dataset_name}`")
+            final_folder_name = build_dataset_folder_name(
+                final_dataset_name,
+                preview_data.get("dataset_name_id")
+            )
+            st.warning(f"⚠️ 确认保存后，当前数据文件夹将被重命名为：\n`{final_folder_name}`")
 
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
@@ -591,14 +739,16 @@ def main():
                     parent_dir = os.path.dirname(target_dir_norm)
                     
                     # 1. 检查重名并分配安全的新名字
-                    new_target_dir = os.path.join(parent_dir, final_dataset_name)
+                    final_folder_name = build_dataset_folder_name(
+                        final_dataset_name,
+                        preview_data.get("dataset_name_id")
+                    )
+                    new_target_dir = os.path.join(parent_dir, final_folder_name)
                     if os.path.exists(new_target_dir) and target_dir_norm != new_target_dir:
                         timestamp = time.strftime("%Y%m%d_%H%M%S")
-                        final_dataset_name = f"{final_dataset_name}_{timestamp}"
-                        new_target_dir = os.path.join(parent_dir, final_dataset_name)
-                        # 同步更新 YAML 中的数据集名称
-                        preview_data["dataset_name"] = final_dataset_name
-                        st.toast(f"检测到同名文件夹，自动附加时间戳：{final_dataset_name}")
+                        final_folder_name = f"{final_folder_name}_{timestamp}"
+                        new_target_dir = os.path.join(parent_dir, final_folder_name)
+                        st.toast(f"检测到同名文件夹，自动附加时间戳：{final_folder_name}")
 
                     try:
                         # 2. 优先重命名文件夹 (避免在旧路径下生成新文件后改名失败，导致文件散落)
@@ -607,9 +757,10 @@ def main():
                             st.session_state['dataset_path'] = new_target_dir
 
                         # 3. 在新文件夹中生成并保存 YAML (引入了防覆盖的备份逻辑，见后文 ConfigGenerator 修改)
+                        preview_data = ensure_dataset_export_fields(preview_data, new_target_dir)
                         save_path = ConfigGenerator.analyze_and_save(preview_data, new_target_dir, filename="local_dataset_info.yaml")
 
-                        st.success(f"🎉 标注文件已保存！文件夹最终名称为 `{final_dataset_name}`。")
+                        st.success(f"🎉 标注文件已保存！文件夹最终名称为 `{final_folder_name}`。")
 
                         # 清除预览状态
                         st.session_state['show_preview'] = False

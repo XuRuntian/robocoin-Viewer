@@ -484,6 +484,7 @@
         "test tube brush": "试管刷",
         "measuring cup": "量杯",
         "beaker": "烧杯",
+        "Erlenmeyer flask": "锥形瓶",
         "grains of sand": "沙粒",
         "white powder": "白色粉末",
         "black solid": "黑色固体",
@@ -533,6 +534,22 @@
         "other": "其他颜色",
         "unknown": "未知颜色",
         "none": "不适用"
+      },
+      "group": "动作与物品"
+    },
+    {
+      "key": "target_sequence",
+      "label": "目标交互顺序 (Target Sequence)",
+      "type": "target_sequence_table",
+      "source_key": "objects",
+      "default_anchor": "main_body",
+      "default_role": "target",
+      "role_options": {
+        "target": "目标物体",
+        "container": "容器",
+        "tool": "工具",
+        "labware": "实验器皿",
+        "fixture": "固定环境物"
       },
       "group": "动作与物品"
     },
@@ -619,6 +636,17 @@
       "default": 0,
       "min_value": 0,
       "max_value": 100,
+      "step": 1,
+      "format": "%d",
+      "group": "基本信息"
+    },
+    {
+      "key": "dataset_name_id",
+      "label": "数据集名称编号",
+      "type": "number",
+      "default": 0,
+      "min_value": 0,
+      "max_value": 9999,
       "step": 1,
       "format": "%d",
       "group": "基本信息"

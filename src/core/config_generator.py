@@ -17,7 +17,7 @@ class ConfigGenerator:
             for k, v in data.items():
                 new_data[k] = v
                 if k == 'dataset_name':
-                    new_data['dataset_uuid'] = None
+                    new_data['dataset_uuid'] = str(uuid.uuid4())
             data = new_data
 
         # 使用自定义的 IndentDumper 并且保留原有配置
