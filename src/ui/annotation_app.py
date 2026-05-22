@@ -67,6 +67,15 @@ def default_canonical_id(object_name, anchor="main_body"):
         return ""
     return f"{canonicalize_object_name(object_name)}:{anchor or 'main_body'}"
 
+def anchor_from_canonical_id(canonical_id, default_anchor="main_body"):
+    """兼容旧格式，把 object_name:anchor 拆成只供用户编辑的 anchor。"""
+    if not canonical_id:
+        return default_anchor
+    canonical_id = str(canonical_id).strip()
+    if ":" in canonical_id:
+        return canonical_id.split(":", 1)[1].strip() or default_anchor
+    return canonical_id or default_anchor
+
 def build_dataset_folder_name(dataset_name, dataset_name_id):
     if dataset_name_id in ("", None):
         return dataset_name
@@ -300,12 +309,24 @@ def render_field(field, current_data, all_fields=None):
         if table_key not in st.session_state:
             st.session_state[table_key] = [
                 {
-                    "canonical_id": default_canonical_id(name, default_anchor),
+                    "anchor": default_anchor,
                     "object_name": name,
                     "role": default_role,
                 }
                 for name in source_names
             ]
+        else:
+            migrated_rows = []
+            for row in st.session_state[table_key]:
+                migrated = dict(row)
+                if "anchor" not in migrated:
+                    migrated["anchor"] = anchor_from_canonical_id(
+                        migrated.get("canonical_id"),
+                        default_anchor,
+                    )
+                migrated.pop("canonical_id", None)
+                migrated_rows.append(migrated)
+            st.session_state[table_key] = migrated_rows
 
         existing_names = [
             row.get("object_name")
@@ -317,13 +338,14 @@ def render_field(field, current_data, all_fields=None):
             if name and name not in object_options:
                 object_options.append(name)
 
-        st.caption("按机器人与目标物体的交互顺序填写；canonical_id 可作为与物体 subject 绑定的锚点。")
+        st.caption("按机器人与目标物体的交互顺序填写；只填写锚点名，留空默认 main_body，导出时会自动生成 canonical_id。")
 
         column_config = {
-            "canonical_id": st.column_config.TextColumn(
-                "锚点 canonical_id",
-                help="默认格式为 object_name:main_body，例如 test_tube_rack:main_body。",
+            "anchor": st.column_config.TextColumn(
+                "锚点 anchor",
+                help="只填写冒号后面的锚点，例如 main_body；不填默认 main_body，导出时自动拼成 object_name:main_body。",
                 required=False,
+                default=default_anchor,
             ),
             "object_name": st.column_config.SelectboxColumn(
                 "目标物体",
@@ -353,16 +375,22 @@ def render_field(field, current_data, all_fields=None):
             object_name = clean_editor_value(row.get("object_name", ""))
             if not object_name:
                 continue
-            canonical_id = str(row.get("canonical_id") or "").strip()
-            if not canonical_id:
-                canonical_id = default_canonical_id(object_name, default_anchor)
+            anchor = anchor_from_canonical_id(row.get("anchor"), default_anchor)
+            canonical_id = default_canonical_id(object_name, anchor)
             cleaned.append({
+                "anchor": anchor,
                 "canonical_id": canonical_id,
                 "object_name": object_name,
                 "role": clean_editor_value(row.get("role", default_role)) or default_role,
             })
-        st.session_state[table_key] = cleaned
-        return cleaned
+        st.session_state[table_key] = [
+            {k: v for k, v in row.items() if k != "canonical_id"}
+            for row in cleaned
+        ]
+        return [
+            {k: v for k, v in row.items() if k != "anchor"}
+            for row in cleaned
+        ]
 
 def setup_comparison_layout(sample_names, cameras):
     columns = []
