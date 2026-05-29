@@ -7,6 +7,18 @@
       "group": "基本信息"
     },
     {
+      "key": "task_type",
+      "label": "任务类型",
+      "type": "selectbox",
+      "options": {
+        "pick_and_place": "抓取与放置",
+        "container_placement": "放入容器",
+        "garment_folding": "衣物/软体折叠",
+        "labware_rearrangement": "实验器皿重排"
+      },
+      "group": "基本信息"
+    },
+    {
       "key": "task_instruction",
       "label": "Task Instruction (任务指令, 每行一条)",
       "type": "textarea",
@@ -211,7 +223,7 @@
       "label": "操作物品 (Objects)",
       "type": "object_table",
       "name_options": {
-        "table": "桌子",
+        "table": "桌面/桌子",
         "sofa": "沙发",
         "counter": "台面",
         "cupboard": "橱柜",
@@ -231,6 +243,8 @@
         "soup spoon": "汤勺",
         "stirring spoon": "搅拌勺",
         "double-ear steamer": "双耳蒸锅",
+        "steamer": "蒸笼",
+        "steamer lid": "蒸笼盖",
         "frying pan (egg pan)": "煎锅（蛋锅）",
         "wok": "炒锅",
         "glass cup": "玻璃杯",
@@ -509,7 +523,8 @@
         "lipstick": "口红",
         "water bottle": "水瓶",
         "rice": "大米",
-        "steamed bun": "馒头",
+        "baozi": "包子",
+        "steamed bun": "包子/馒头",
         "instant noodles": "方便面",
         "salad dressing": "沙拉酱",
         "blueberry sauce": "蓝莓酱",
@@ -535,6 +550,16 @@
         "unknown": "未知颜色",
         "none": "不适用"
       },
+      "role_options": {
+        "manipulated_object": "机器人主动操作对象",
+        "container": "容器",
+        "support_surface": "支撑面",
+        "destination_region": "目标区域",
+        "tool": "工具",
+        "fixture": "固定环境物",
+        "labware": "实验器皿",
+        "deformable_object": "软体对象"
+      },
       "group": "动作与物品"
     },
     {
@@ -543,13 +568,42 @@
       "type": "target_sequence_table",
       "source_key": "objects",
       "default_anchor": "main_body",
-      "default_role": "target",
+      "default_role": "manipulated_object",
       "role_options": {
+        "manipulated_object": "机器人主动操作对象",
         "target": "目标物体",
         "container": "容器",
+        "support_surface": "支撑面",
+        "destination_region": "目标区域",
         "tool": "工具",
         "labware": "实验器皿",
-        "fixture": "固定环境物"
+        "fixture": "固定环境物",
+        "deformable_object": "软体对象"
+      },
+      "group": "动作与物品"
+    },
+    {
+      "key": "context",
+      "label": "上下文对象 (Context)",
+      "type": "context_fields",
+      "source_key": "objects",
+      "group": "动作与物品"
+    },
+    {
+      "key": "expected_effects",
+      "label": "任务级预期效果 (Expected Effects)",
+      "type": "expected_effects_table",
+      "source_key": "objects",
+      "effect_options": {
+        "placement_change": "位置变化",
+        "containment_change": "容器内外状态变化",
+        "closing_change": "关闭状态变化",
+        "opening_change": "打开状态变化",
+        "shape_change": "形状变化",
+        "topology_change": "拓扑变化",
+        "grasp_change": "抓取状态变化",
+        "release_change": "释放状态变化",
+        "unknown": "未知"
       },
       "group": "动作与物品"
     },

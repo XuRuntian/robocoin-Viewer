@@ -18,6 +18,7 @@ from src.core.organizer import DatasetOrganizer
 from src.core.reviewer import DatasetReviewer
 from src.core.factory import ReaderFactory
 from src.core.config_generator import ConfigGenerator
+from src.core.preannotation import TARGET_SEQUENCE_ROLES, build_preannotation_yaml
 from src.ui.rerun_visualizer import RerunVisualizer
 
 # 页面配置
@@ -99,6 +100,7 @@ def ensure_dataset_export_fields(data, dataset_dir=None):
     ordered_keys = [
         "dataset_name",
         "dataset_uuid",
+        "task_type",
         "task_instruction",
         "dataset_batch_number",
         "env_type",
@@ -107,6 +109,12 @@ def ensure_dataset_export_fields(data, dataset_dir=None):
         "target_sequence",
         "atomic_actions",
         "objects",
+        "context",
+        "expected_effects",
+        "deformable_anchor_policy",
+        "warnings",
+        "needs_review",
+        "validation",
         "operation_platform_height",
         "device_model",
         "end_effector_type",
@@ -269,19 +277,45 @@ def render_field(field, current_data, all_fields=None):
         
     elif ftype == "object_table":
         if f'table_{key}' not in st.session_state:
-            st.session_state[f'table_{key}'] = [{"object_name": "table", "color": "red"}]
+            st.session_state[f'table_{key}'] = [
+                {
+                    "object_name": "table",
+                    "color": "none",
+                    "role": "support_surface",
+                    "target_order": None,
+                }
+            ]
             
         name_opts = field.get("name_options", {})
         color_opts = field.get("color_options", {})
+        role_opts = field.get("role_options", {
+            "manipulated_object": "被操作物",
+            "container": "容器",
+            "support_surface": "支撑面",
+            "destination_region": "目标区域",
+            "tool": "工具",
+            "fixture": "固定环境物",
+            "labware": "实验器皿",
+            "deformable_object": "软体物",
+        })
         name_display = [f"{k} ({v})" for k, v in name_opts.items()]
         color_display = [f"{k} ({v})" for k, v in color_opts.items()]
+        role_display = list(role_opts.keys())
         
         edited = st.data_editor(
             st.session_state[f'table_{key}'],
             num_rows="dynamic",
             column_config={
                 "object_name": st.column_config.SelectboxColumn("物品名称", options=name_display, required=True),
-                "color": st.column_config.SelectboxColumn("颜色", options=color_display, required=True)
+                "color": st.column_config.SelectboxColumn("颜色", options=color_display, required=True),
+                "role": st.column_config.SelectboxColumn("角色 role", options=role_display, required=True),
+                "target_order": st.column_config.NumberColumn(
+                    "目标顺序",
+                    help="只给机器人主动操作对象填写 1, 2, 3；容器/支撑面留空。",
+                    min_value=1,
+                    step=1,
+                    required=False,
+                ),
             },
             width="stretch"
         )
@@ -289,17 +323,22 @@ def render_field(field, current_data, all_fields=None):
         cleaned = []
         for row in edited:
             if row.get("object_name"):
-                cleaned.append({
+                cleaned_row = {
                     "object_name": clean_editor_value(row["object_name"]),
-                    "color": clean_editor_value(row["color"])
-                })
+                    "color": clean_editor_value(row.get("color", "unknown")),
+                    "role": clean_editor_value(row.get("role", "manipulated_object")) or "manipulated_object",
+                }
+                if row.get("target_order") not in ("", None):
+                    cleaned_row["target_order"] = int(row["target_order"])
+                cleaned.append(cleaned_row)
         return cleaned
 
     elif ftype == "target_sequence_table":
         table_key = f"table_{key}"
         source_key = field.get("source_key", "objects")
         source_objects = current_data.get(source_key, [])
-        source_names = [obj.get("object_name") for obj in source_objects if obj.get("object_name")]
+        source_rows = [obj for obj in source_objects if obj.get("object_name")]
+        source_names = [obj.get("object_name") for obj in source_rows]
 
         role_options = field.get("role_options", {})
         role_display = list(role_options.keys())
@@ -310,10 +349,11 @@ def render_field(field, current_data, all_fields=None):
             st.session_state[table_key] = [
                 {
                     "anchor": default_anchor,
-                    "object_name": name,
-                    "role": default_role,
+                    "object_name": obj.get("object_name"),
+                    "role": obj.get("role", default_role),
                 }
-                for name in source_names
+                for obj in source_rows
+                if obj.get("role", default_role) in TARGET_SEQUENCE_ROLES
             ]
         else:
             migrated_rows = []
@@ -391,6 +431,71 @@ def render_field(field, current_data, all_fields=None):
             {k: v for k, v in row.items() if k != "anchor"}
             for row in cleaned
         ]
+
+    elif ftype == "context_fields":
+        source_key = field.get("source_key", "objects")
+        source_objects = current_data.get(source_key, [])
+        object_names = [obj.get("object_name") for obj in source_objects if obj.get("object_name")]
+        options = ["auto"] + object_names
+
+        st.markdown(f"**{label}**")
+        col_dest, col_container, col_surface = st.columns(3)
+        with col_dest:
+            destination = st.selectbox("destination", options=options, key=f"{key}_destination")
+        with col_container:
+            container = st.selectbox("container", options=options, key=f"{key}_container")
+        with col_surface:
+            support_surface = st.selectbox("support_surface", options=options, key=f"{key}_support_surface")
+
+        context = {}
+        if destination != "auto":
+            context["destination"] = destination
+        if container != "auto":
+            context["container"] = container
+        if support_surface != "auto":
+            context["support_surface"] = support_surface
+        return context
+
+    elif ftype == "expected_effects_table":
+        table_key = f"table_{key}"
+        if table_key not in st.session_state:
+            st.session_state[table_key] = []
+
+        source_key = field.get("source_key", "objects")
+        source_objects = current_data.get(source_key, [])
+        object_options = [obj.get("object_name") for obj in source_objects if obj.get("object_name")]
+        effect_options = list(field.get("effect_options", {}).keys())
+
+        edited = st.data_editor(
+            st.session_state[table_key],
+            num_rows="dynamic",
+            column_config={
+                "object": st.column_config.SelectboxColumn("对象", options=object_options, required=True)
+                if object_options else st.column_config.TextColumn("对象", required=True),
+                "effect_type": st.column_config.SelectboxColumn(
+                    "效果类型",
+                    options=effect_options,
+                    required=True,
+                ) if effect_options else st.column_config.TextColumn("效果类型", required=True),
+                "from_state": st.column_config.TextColumn("from_state", required=False),
+                "to_state": st.column_config.TextColumn("to_state", required=False),
+            },
+            width="stretch",
+            key=f"editor_{key}",
+        )
+
+        cleaned = []
+        for row in edited:
+            if not row.get("object") or not row.get("effect_type"):
+                continue
+            cleaned.append({
+                "object": clean_editor_value(row.get("object")),
+                "effect_type": clean_editor_value(row.get("effect_type")),
+                "from_state": row.get("from_state", ""),
+                "to_state": row.get("to_state", ""),
+            })
+        st.session_state[table_key] = cleaned
+        return cleaned
 
 def setup_comparison_layout(sample_names, cameras):
     columns = []
@@ -733,7 +838,7 @@ def main():
             if not collected_data.get("dataset_name") or collected_data.get("dataset_name") == st.session_state.get("prefix_dataset_name", ""):
                 st.error("请完整填写「数据集名称 (自动拼接)」中的动作名称（动词_名词）！")
             else:
-                preview_seed = ensure_dataset_export_fields(collected_data)
+                preview_seed = ensure_dataset_export_fields(build_preannotation_yaml(collected_data))
                 folder_name = build_dataset_folder_name(
                     preview_seed["dataset_name"],
                     preview_seed.get("dataset_name_id")
@@ -748,6 +853,10 @@ def main():
 
             st.info("👇 请二次核对以下将要生成的 YAML 内容：")
             st.code(yaml_str, language="yaml")
+            if preview_data.get("warnings"):
+                st.warning("校验发现需要复核的问题：\n\n" + "\n".join(f"- {w}" for w in preview_data["warnings"]))
+            elif preview_data.get("validation", {}).get("status") == "pass":
+                st.success("预标注 YAML 校验通过。")
 
             final_dataset_name = preview_data["dataset_name"]
             
