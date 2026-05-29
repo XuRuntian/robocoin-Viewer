@@ -9,6 +9,9 @@ class IndentDumper(yaml.Dumper):
     def increase_indent(self, flow=False, indentless=False):
         return super(IndentDumper, self).increase_indent(flow, False)
 
+    def ignore_aliases(self, data):
+        return True
+
 class ConfigGenerator:
     @staticmethod
     def generate_yaml_string(data: dict) -> str:

@@ -14,7 +14,8 @@
         "pick_and_place": "抓取与放置",
         "container_placement": "放入容器",
         "garment_folding": "衣物/软体折叠",
-        "labware_rearrangement": "实验器皿重排"
+        "labware_rearrangement": "实验器皿重排",
+        "compound_task": "复合任务"
       },
       "group": "基本信息"
     },
@@ -529,7 +530,8 @@
         "salad dressing": "沙拉酱",
         "blueberry sauce": "蓝莓酱",
         "socks": "袜子",
-        "underwear": "内裤"
+        "underwear": "内裤",
+        "pot lid": "锅盖"
       },
       "color_options": {
         "red": "红色",
@@ -551,14 +553,30 @@
         "none": "不适用"
       },
       "role_options": {
-        "manipulated_object": "机器人主动操作对象",
-        "container": "容器",
-        "support_surface": "支撑面",
-        "destination_region": "目标区域",
+        "": "自动推断",
+        "destination": "目的地",
         "tool": "工具",
         "fixture": "固定环境物",
+        "manipulated_object": "机器人主动操作对象",
+        "container": "容器（旧字段）",
+        "support_surface": "支撑面（旧字段）",
+        "destination_region": "目标区域（旧字段）",
         "labware": "实验器皿",
         "deformable_object": "软体对象"
+      },
+      "object_type_options": {
+        "": "自动推断",
+        "rigid": "刚体",
+        "deformable": "软体",
+        "soft_rigid": "软刚体",
+        "articulated": "关节物体",
+        "unknown": "未知"
+      },
+      "anchor_policy_options": {
+        "": "自动推断",
+        "none": "无局部锚点",
+        "stable_part": "稳定部件",
+        "dynamic_affordance": "动态可供性"
       },
       "group": "动作与物品"
     },
@@ -605,6 +623,13 @@
         "release_change": "释放状态变化",
         "unknown": "未知"
       },
+      "group": "动作与物品"
+    },
+    {
+      "key": "task_steps",
+      "label": "复合任务步骤 (Task Steps，可选 YAML list)",
+      "type": "yaml_textarea",
+      "default": "",
       "group": "动作与物品"
     },
     {

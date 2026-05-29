@@ -8,6 +8,7 @@ from tkinter import filedialog
 import streamlit as st
 import rerun as rr
 import rerun.blueprint as rrb
+import yaml
 from openai import OpenAI
 
 # 确保能找到 src
@@ -98,6 +99,7 @@ def ensure_dataset_export_fields(data, dataset_dir=None):
         enriched["data_path"] = dataset_dir
 
     ordered_keys = [
+        "schema_version",
         "dataset_name",
         "dataset_uuid",
         "task_type",
@@ -111,6 +113,7 @@ def ensure_dataset_export_fields(data, dataset_dir=None):
         "objects",
         "context",
         "expected_effects",
+        "task_steps",
         "deformable_anchor_policy",
         "warnings",
         "needs_review",
@@ -281,7 +284,7 @@ def render_field(field, current_data, all_fields=None):
                 {
                     "object_name": "table",
                     "color": "none",
-                    "role": "support_surface",
+                    "role": "",
                     "target_order": None,
                 }
             ]
@@ -289,18 +292,34 @@ def render_field(field, current_data, all_fields=None):
         name_opts = field.get("name_options", {})
         color_opts = field.get("color_options", {})
         role_opts = field.get("role_options", {
-            "manipulated_object": "被操作物",
-            "container": "容器",
-            "support_surface": "支撑面",
-            "destination_region": "目标区域",
+            "": "自动推断",
+            "destination": "目的地",
             "tool": "工具",
             "fixture": "固定环境物",
-            "labware": "实验器皿",
-            "deformable_object": "软体物",
+            "container": "容器（旧字段）",
+            "support_surface": "支撑面（旧字段）",
+            "labware": "实验器皿（旧字段）",
+            "deformable_object": "软体对象（旧字段）",
+        })
+        object_type_opts = field.get("object_type_options", {
+            "": "自动推断",
+            "rigid": "刚体",
+            "deformable": "软体",
+            "soft_rigid": "软刚体",
+            "articulated": "关节物体",
+            "unknown": "未知",
+        })
+        anchor_policy_opts = field.get("anchor_policy_options", {
+            "": "自动推断",
+            "none": "无局部锚点",
+            "stable_part": "稳定部件",
+            "dynamic_affordance": "动态可供性",
         })
         name_display = [f"{k} ({v})" for k, v in name_opts.items()]
         color_display = [f"{k} ({v})" for k, v in color_opts.items()]
         role_display = list(role_opts.keys())
+        object_type_display = list(object_type_opts.keys())
+        anchor_policy_display = list(anchor_policy_opts.keys())
         
         edited = st.data_editor(
             st.session_state[f'table_{key}'],
@@ -309,6 +328,10 @@ def render_field(field, current_data, all_fields=None):
                 "object_name": st.column_config.SelectboxColumn("物品名称", options=name_display, required=True),
                 "color": st.column_config.SelectboxColumn("颜色", options=color_display, required=True),
                 "role": st.column_config.SelectboxColumn("角色 role", options=role_display, required=True),
+                "object_type": st.column_config.SelectboxColumn("object_type", options=object_type_display, required=False),
+                "anchor_policy": st.column_config.SelectboxColumn("anchor_policy", options=anchor_policy_display, required=False),
+                "stable_anchors": st.column_config.TextColumn("stable_anchors", help="逗号分隔，例如 main_body,inner_zone,rim", required=False),
+                "affordance_roles": st.column_config.TextColumn("affordance_roles", help="逗号分隔，例如 corner,edge,crease", required=False),
                 "target_order": st.column_config.NumberColumn(
                     "目标顺序",
                     help="只给机器人主动操作对象填写 1, 2, 3；容器/支撑面留空。",
@@ -326,8 +349,11 @@ def render_field(field, current_data, all_fields=None):
                 cleaned_row = {
                     "object_name": clean_editor_value(row["object_name"]),
                     "color": clean_editor_value(row.get("color", "unknown")),
-                    "role": clean_editor_value(row.get("role", "manipulated_object")) or "manipulated_object",
                 }
+                for optional_key in ("role", "object_type", "anchor_policy", "stable_anchors", "affordance_roles"):
+                    value = clean_editor_value(row.get(optional_key, ""))
+                    if value not in ("", None):
+                        cleaned_row[optional_key] = value
                 if row.get("target_order") not in ("", None):
                     cleaned_row["target_order"] = int(row["target_order"])
                 cleaned.append(cleaned_row)
@@ -496,6 +522,26 @@ def render_field(field, current_data, all_fields=None):
             })
         st.session_state[table_key] = cleaned
         return cleaned
+
+    elif ftype == "yaml_textarea":
+        state_key = f"yaml_textarea_{key}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = field.get("default", "")
+        text = st.text_area(label, value=st.session_state[state_key], height=180)
+        st.session_state[state_key] = text
+        if not text.strip():
+            return []
+        try:
+            parsed = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            st.error(f"{label} YAML 解析失败: {exc}")
+            return []
+        if parsed is None:
+            return []
+        if not isinstance(parsed, list):
+            st.error(f"{label} 必须是 YAML list。")
+            return []
+        return parsed
 
 def setup_comparison_layout(sample_names, cameras):
     columns = []
@@ -853,6 +899,10 @@ def main():
 
             st.info("👇 请二次核对以下将要生成的 YAML 内容：")
             st.code(yaml_str, language="yaml")
+            validation = preview_data.get("validation", {})
+            has_validation_error = validation.get("status") == "error"
+            if validation.get("errors"):
+                st.error("校验失败，当前 YAML 不能保存：\n\n" + "\n".join(f"- {e}" for e in validation["errors"]))
             if preview_data.get("warnings"):
                 st.warning("校验发现需要复核的问题：\n\n" + "\n".join(f"- {w}" for w in preview_data["warnings"]))
             elif preview_data.get("validation", {}).get("status") == "pass":
@@ -871,7 +921,7 @@ def main():
 
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
-                if st.button("🚨 确认无误，生成文件并重命名", type="primary"):
+                if st.button("🚨 确认无误，生成文件并重命名", type="primary", disabled=has_validation_error):
                     target_dir_norm = os.path.normpath(target_dir)
                     parent_dir = os.path.dirname(target_dir_norm)
                     
