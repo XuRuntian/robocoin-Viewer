@@ -118,7 +118,7 @@ def test_context_allows_custom_relationships():
     assert validate_preannotation(result)["status"] == "pass"
 
 
-def test_expected_effect_type_allows_multiple_values():
+def test_expected_effect_type_list_is_expanded_to_atomic_records():
     result = build_preannotation_yaml(
         {
             "task_type": "pick_and_place",
@@ -135,11 +135,51 @@ def test_expected_effect_type_allows_multiple_values():
         }
     )
 
-    assert result["expected_effects"][0]["effect_type"] == [
-        "placement_change",
-        "alignment_change",
+    assert result["expected_effects"] == [
+        {"object": "rack:main_body", "effect_type": "placement_change"},
+        {"object": "rack:main_body", "effect_type": "alignment_change"},
     ]
     assert validate_preannotation(result)["status"] == "pass"
+
+
+def test_atomic_effect_records_preserve_independent_properties():
+    result = build_preannotation_yaml(
+        {
+            "task_type": "pick_and_place",
+            "task_instruction": "Move and align the block.",
+            "objects": [
+                {"name": "block", "color": "red", "anchor_policy": "static"},
+                {"name": "counter", "color": "gray", "anchor_policy": "static"},
+            ],
+            "expected_effects": [
+                {
+                    "object": "block",
+                    "effect_type": "placement_change",
+                    "to_state": "on_counter",
+                    "destination": "counter:main_body",
+                },
+                {
+                    "object": "block",
+                    "effect_type": "alignment_change",
+                    "to_state": "aligned",
+                },
+            ],
+        }
+    )
+
+    assert result["expected_effects"] == [
+        {
+            "to_state": "on_counter",
+            "destination": "counter:main_body",
+            "object": "block:main_body",
+            "effect_type": "placement_change",
+        },
+        {
+            "to_state": "aligned",
+            "object": "block:main_body",
+            "effect_type": "alignment_change",
+        },
+    ]
 
 
 def test_static_garment_can_use_stable_sleeve_anchors():
@@ -192,7 +232,7 @@ def test_container_placement_uses_context_without_container_target():
     assert validate_preannotation(result)["status"] == "pass"
 
 
-def test_same_name_objects_receive_ids_and_can_be_referenced():
+def test_same_name_objects_require_explicit_stable_ids():
     result = build_preannotation_yaml(
         {
             "task_type": "pick_and_place",
@@ -201,15 +241,37 @@ def test_same_name_objects_receive_ids_and_can_be_referenced():
                 {"name": "block", "color": "red", "anchor_policy": "static"},
                 {"name": "block", "color": "red", "anchor_policy": "static"},
             ],
-            "target_sequence": ["block_1", "block_2"],
+            "target_sequence": ["block", "block"],
             "expected_effects": [
-                {"object": "block_1", "effect_type": "placement_change"},
-                {"object": "block_2", "effect_type": "placement_change"},
+                {"object": "block", "effect_type": "placement_change"},
             ],
         }
     )
 
-    assert [obj["id"] for obj in result["objects"]] == ["block_1", "block_2"]
+    assert [obj["id"] for obj in result["objects"]] == ["block", "block"]
+    validation = validate_preannotation(result)
+    assert validation["status"] == "error"
+    assert any("assign an explicit id" in error for error in validation["errors"])
+
+
+def test_same_name_objects_accept_explicit_stable_ids():
+    result = build_preannotation_yaml(
+        {
+            "task_type": "pick_and_place",
+            "task_instruction": "Move both blocks.",
+            "objects": [
+                {"id": "left_block", "name": "block", "color": "red", "anchor_policy": "static"},
+                {"id": "right_block", "name": "block", "color": "red", "anchor_policy": "static"},
+            ],
+            "target_sequence": ["left_block", "right_block"],
+            "expected_effects": [
+                {"object": "left_block", "effect_type": "placement_change"},
+                {"object": "right_block", "effect_type": "alignment_change"},
+            ],
+        }
+    )
+
+    assert [obj["id"] for obj in result["objects"]] == ["left_block", "right_block"]
     assert validate_preannotation(result)["status"] == "pass"
 
 

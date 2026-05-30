@@ -276,6 +276,7 @@ def render_field(field, current_data, all_fields=None):
         if f'table_{key}' not in st.session_state:
             st.session_state[f'table_{key}'] = [
                 {
+                    "id": "",
                     "object_name": "table",
                     "color": "none",
                     "anchor_policy": "static",
@@ -296,6 +297,11 @@ def render_field(field, current_data, all_fields=None):
             st.session_state[f'table_{key}'],
             num_rows="dynamic",
             column_config={
+                "id": st.column_config.TextColumn(
+                    "对象 ID（同名对象时必填）",
+                    help="普通对象留空自动按名称生成；同名对象请人工填写稳定 ID，例如 left_block、right_block。",
+                    required=False,
+                ),
                 "object_name": st.column_config.SelectboxColumn("物品名称", options=name_display, required=True),
                 "color": st.column_config.SelectboxColumn("颜色", options=color_display, required=True),
                 "anchor_policy": st.column_config.SelectboxColumn("anchor_policy", options=anchor_policy_display, default="static", required=True),
@@ -309,10 +315,13 @@ def render_field(field, current_data, all_fields=None):
                 object_name = clean_editor_value(row["object_name"])
                 anchor_policy = clean_editor_value(row.get("anchor_policy")) or "static"
                 cleaned.append({
+                    "id": str(row.get("id") or "").strip(),
                     "object_name": object_name,
                     "color": clean_editor_value(row.get("color", "unknown")),
                     "anchor_policy": anchor_policy,
                 })
+                if not cleaned[-1]["id"]:
+                    cleaned[-1].pop("id")
         return cleaned
 
     elif ftype == "target_sequence_table":
@@ -454,11 +463,11 @@ def render_field(field, current_data, all_fields=None):
             column_config={
                 "object": st.column_config.SelectboxColumn("对象", options=object_options, required=True)
                 if object_options else st.column_config.TextColumn("对象", required=True),
-                "effect_type": st.column_config.MultiselectColumn(
-                    "效果类型（可多选）",
+                "effect_type": st.column_config.SelectboxColumn(
+                    "效果类型",
                     options=effect_options,
                     required=True,
-                ) if effect_options else st.column_config.TextColumn("效果类型（可多选）", required=True),
+                ) if effect_options else st.column_config.TextColumn("效果类型", required=True),
                 "anchor": st.column_config.TextColumn(
                     "锚点 anchor（可选）",
                     help="留空默认 main_body。",

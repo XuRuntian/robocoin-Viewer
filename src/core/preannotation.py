@@ -121,16 +121,11 @@ def _input_objects(raw_objects: List[Any]) -> List[Dict[str, Any]]:
 
 def _export_objects(raw_objects: List[Any]) -> List[Dict[str, Any]]:
     objects = _input_objects(raw_objects)
-    generated_ids = [normalize_object_id(obj.get("id") or obj.get("name")) for obj in objects]
-    duplicated_ids = {object_id for object_id in generated_ids if generated_ids.count(object_id) > 1}
-    seen: Dict[str, int] = {}
     exported = []
 
-    for obj, generated_id in zip(objects, generated_ids):
-        seen[generated_id] = seen.get(generated_id, 0) + 1
-        resolved_id = f"{generated_id}_{seen[generated_id]}" if generated_id in duplicated_ids else generated_id
+    for obj in objects:
         output = {
-            "id": resolved_id,
+            "id": normalize_object_id(obj.get("id") or obj.get("name")),
             "name": str(obj.get("name") or "").strip(),
             "color": str(obj.get("color") or "").strip(),
             "anchor_policy": str(obj.get("anchor_policy") or "").strip(),
@@ -185,19 +180,23 @@ def _build_expected_effects(data: Dict[str, Any], lookup: Dict[str, str]) -> Lis
     for raw in data.get("expected_effects") or []:
         if not isinstance(raw, dict):
             continue
-        effect = {}
-        if raw.get("object") or raw.get("object_name"):
-            effect["object"] = _normalize_registered_reference(
-                raw.get("object") or raw.get("object_name"),
-                lookup,
-            )
         effect_types = raw.get("effect_type")
-        if effect_types:
-            effect["effect_type"] = effect_types
-        for key in ("from_state", "to_state"):
-            if raw.get(key) not in ("", None):
-                effect[key] = raw[key]
-        if effect:
+        if not isinstance(effect_types, list):
+            effect_types = [effect_types] if effect_types else []
+        for effect_type in effect_types:
+            effect = {
+                key: value
+                for key, value in raw.items()
+                if key not in {"object", "object_name", "effect_type"} and value not in ("", None, [])
+            }
+            if effect.get("destination"):
+                effect["destination"] = _normalize_registered_reference(effect["destination"], lookup)
+            if raw.get("object") or raw.get("object_name"):
+                effect["object"] = _normalize_registered_reference(
+                    raw.get("object") or raw.get("object_name"),
+                    lookup,
+                )
+            effect["effect_type"] = effect_type
             effects.append(effect)
     return effects
 
@@ -262,10 +261,10 @@ def validate_preannotation(data: Dict[str, Any]) -> Dict[str, Any]:
             errors.append(f"expected_effects[{index}] must be an object.")
             continue
         validate_reference(effect.get("object"), f"expected_effects[{index}].object")
-        effect_types = effect.get("effect_type")
-        if isinstance(effect_types, str):
-            effect_types = [effect_types]
-        if not effect_types or any(effect_type not in EFFECT_TYPES for effect_type in effect_types):
+        if effect.get("destination"):
+            validate_reference(effect["destination"], f"expected_effects[{index}].destination")
+        effect_type = effect.get("effect_type")
+        if not isinstance(effect_type, str) or effect_type not in EFFECT_TYPES:
             errors.append(f"expected_effects[{index}].effect_type is not supported.")
 
     return {
