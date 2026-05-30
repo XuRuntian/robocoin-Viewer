@@ -4,53 +4,7 @@ from src.core.config_generator import ConfigGenerator
 from src.core.preannotation import build_preannotation_yaml, validate_preannotation
 
 
-def test_container_destination_is_not_auto_target():
-    result = build_preannotation_yaml(
-        {
-            "task_instruction": ["Place the baozi into the steamer."],
-            "objects": ["baozi", "steamer"],
-        }
-    )
-
-    assert result["schema_version"] == "task_prior_v1_5"
-    assert result["task_type"] == "container_placement"
-    assert result["target_sequence"] == [
-        {"canonical_id": "baozi:main_body", "object_name": "baozi"}
-    ]
-    assert result["objects"][1]["role"] == "destination"
-    assert result["context"]["destination"] == "steamer:inner_zone"
-    assert result["context"]["container"] == "steamer:main_body"
-
-
-def test_baozi_into_steamer_generates_containment_change():
-    result = build_preannotation_yaml(
-        {
-            "task_type": "container_placement",
-            "task_instruction": ["Place the baozi into the steamer."],
-            "objects": [
-                {"object_name": "baozi"},
-                {"object_name": "steamer"},
-            ],
-        }
-    )
-
-    assert result["objects"][0]["object_type"] == "soft_rigid"
-    assert result["objects"][0]["anchor_policy"] == "none"
-    assert result["objects"][1]["object_type"] == "rigid"
-    assert result["objects"][1]["anchor_policy"] == "stable_part"
-    assert result["expected_effects"] == [
-        {
-            "object": "baozi:main_body",
-            "effect_type": "containment_change",
-            "from_state": "outside_steamer",
-            "to_state": "inside_steamer",
-            "destination": "steamer:inner_zone",
-        }
-    ]
-    assert result["validation"]["status"] == "pass"
-
-
-def test_garment_folding_generates_dynamic_affordance_and_shape_change():
+def test_dynamic_folding_omits_target_sequence_and_redundant_fields():
     result = build_preannotation_yaml(
         {
             "task_type": "garment_folding",
@@ -59,149 +13,316 @@ def test_garment_folding_generates_dynamic_affordance_and_shape_change():
                 {
                     "object_name": "blue towel",
                     "color": "blue",
+                    "anchor_policy": "dynamic_affordance",
+                },
+                {
+                    "object_name": "tray",
+                    "color": "green",
+                    "anchor_policy": "static",
+                },
+            ],
+            "context": {"support_surface": "tray"},
+            "expected_effects": [
+                {
+                    "object": "blue_towel",
+                    "effect_type": "shape_change",
+                    "to_state": "folded",
                 }
             ],
         }
     )
 
-    assert result["deformable_anchor_policy"] == "dynamic_affordance"
-    assert result["target_sequence"] == [
-        {"canonical_id": "blue_towel:main_body", "object_name": "blue towel"}
-    ]
-    assert result["objects"][0]["object_type"] == "deformable"
-    assert result["objects"][0]["anchor_policy"] == "dynamic_affordance"
-    assert result["objects"][0]["affordance_roles"] == [
-        "corner",
-        "edge",
-        "crease",
-        "fold_region",
-        "contact_patch",
-    ]
-    assert result["expected_effects"] == [
-        {
-            "object": "blue_towel:main_body",
-            "effect_type": "shape_change",
-            "from_state": "unfolded",
-            "to_state": "folded",
-        }
-    ]
+    assert result == {
+        "task_type": "garment_folding",
+        "task_instruction": "Fold the blue towel.",
+        "objects": [
+            {"id": "blue_towel", "name": "blue towel", "color": "blue", "anchor_policy": "dynamic_affordance"},
+            {"id": "tray", "name": "tray", "color": "green", "anchor_policy": "static"},
+        ],
+        "context": {"support_surface": "tray:main_body"},
+        "expected_effects": [
+            {
+                "object": "blue_towel:main_body",
+                "effect_type": "shape_change",
+                "to_state": "folded",
+            }
+        ],
+    }
 
 
-def test_compound_task_supports_task_steps_without_repeating_target():
+def test_static_targets_are_normalized_and_ordered():
     result = build_preannotation_yaml(
         {
-            "task_type": "compound_task",
-            "task_instruction": ["Fold the blue towel and put it into the basket."],
+            "task_type": "labware_rearrangement",
+            "task_instruction": "Move the rack, then the beaker.",
             "objects": [
-                {"object_name": "blue towel", "color": "blue"},
-                {"object_name": "basket"},
+                {"name": "test-tube rack", "color": "white", "anchor_policy": "static"},
+                {"name": "beaker", "color": "transparent", "anchor_policy": "static"},
+                {"name": "table", "color": "gray", "anchor_policy": "static"},
+            ],
+            "target_sequence": ["Test-Tube Rack", "beaker"],
+            "context": {"support_surface": "table"},
+            "expected_effects": [
+                {"object": "test-tube rack", "effect_type": "placement_change"},
+                {"object": "beaker", "effect_type": "placement_change"},
             ],
         }
     )
 
-    assert result["task_type"] == "compound_task"
-    assert result["deformable_anchor_policy"] == "dynamic_affordance"
     assert result["target_sequence"] == [
-        {"canonical_id": "blue_towel:main_body", "object_name": "blue towel"}
+        "test_tube_rack:main_body",
+        "beaker:main_body",
     ]
-    assert [step["step_id"] for step in result["task_steps"]] == [
-        "fold_blue_towel",
-        "place_into_basket",
-    ]
-    assert result["task_steps"][1]["destination"] == "basket:inner_zone"
+    assert result["context"] == {"support_surface": "table:main_body"}
 
 
-def test_duplicate_objects_are_numbered():
+def test_target_sequence_allows_repeated_stable_reference():
     result = build_preannotation_yaml(
         {
-            "task_type": "pick_and_place",
-            "task_instruction": ["Place two baozi on the table."],
-            "objects": ["baozi", "baozi", "table"],
+            "task_type": "surface_cleaning",
+            "task_instruction": "Wipe the counter twice.",
+            "objects": [
+                {"name": "counter", "color": "gray", "anchor_policy": "static"},
+            ],
+            "target_sequence": ["counter", "counter"],
+            "expected_effects": [
+                {"object": "counter", "effect_type": "surface_change"},
+            ],
         }
     )
 
-    object_ids = [obj["canonical_id"] for obj in result["objects"]]
-    target_ids = [obj["canonical_id"] for obj in result["target_sequence"]]
-    assert "baozi_1:main_body" in object_ids
-    assert "baozi_2:main_body" in object_ids
-    assert target_ids == ["baozi_1:main_body", "baozi_2:main_body"]
+    assert result["target_sequence"] == [
+        "counter:main_body",
+        "counter:main_body",
+    ]
+    assert validate_preannotation(result)["status"] == "pass"
 
 
-def test_oracle_fields_are_validation_errors_and_removed_from_result():
+def test_context_allows_custom_relationships():
     result = build_preannotation_yaml(
         {
             "task_type": "pick_and_place",
-            "task_instruction": ["Pick the apple."],
+            "task_instruction": "Place the apple near the marker.",
+            "objects": [
+                {"name": "apple", "color": "red", "anchor_policy": "static"},
+                {"name": "marker", "color": "blue", "anchor_policy": "static"},
+            ],
+            "context": {"reference_marker": "marker:handle"},
+            "expected_effects": [
+                {"object": "apple", "effect_type": "placement_change"},
+            ],
+        }
+    )
+
+    assert result["context"] == {"reference_marker": "marker:handle"}
+    assert validate_preannotation(result)["status"] == "pass"
+
+
+def test_expected_effect_type_allows_multiple_values():
+    result = build_preannotation_yaml(
+        {
+            "task_type": "pick_and_place",
+            "task_instruction": "Move and align the rack.",
+            "objects": [
+                {"name": "rack", "color": "white", "anchor_policy": "static"},
+            ],
+            "expected_effects": [
+                {
+                    "object": "rack",
+                    "effect_type": ["placement_change", "alignment_change"],
+                },
+            ],
+        }
+    )
+
+    assert result["expected_effects"][0]["effect_type"] == [
+        "placement_change",
+        "alignment_change",
+    ]
+    assert validate_preannotation(result)["status"] == "pass"
+
+
+def test_static_garment_can_use_stable_sleeve_anchors():
+    result = build_preannotation_yaml(
+        {
+            "task_type": "garment_folding",
+            "task_instruction": "Fold the left sleeve, then the right sleeve.",
+            "objects": [
+                {"name": "jacket", "color": "black", "anchor_policy": "static"},
+            ],
+            "target_sequence": [
+                "Jacket:Wearer-Left-Sleeve",
+                "jacket:wearer_right_sleeve",
+            ],
+            "expected_effects": [
+                {"object": "jacket", "effect_type": "shape_change", "to_state": "folded"},
+            ],
+        }
+    )
+
+    assert result["target_sequence"] == [
+        "jacket:wearer_left_sleeve",
+        "jacket:wearer_right_sleeve",
+    ]
+    assert validate_preannotation(result)["status"] == "pass"
+
+
+def test_container_placement_uses_context_without_container_target():
+    result = build_preannotation_yaml(
+        {
+            "task_type": "container_placement",
+            "task_instruction": "Place the baozi into the steamer.",
+            "objects": [
+                {"name": "baozi", "color": "white", "anchor_policy": "static"},
+                {"name": "steamer", "color": "silver", "anchor_policy": "static"},
+            ],
+            "target_sequence": ["baozi"],
+            "context": {"container": "steamer", "destination": "steamer:inner-zone"},
+            "expected_effects": [
+                {"object": "baozi", "effect_type": "containment_change", "to_state": "inside_steamer"},
+            ],
+        }
+    )
+
+    assert result["target_sequence"] == ["baozi:main_body"]
+    assert result["context"] == {
+        "container": "steamer:main_body",
+        "destination": "steamer:inner_zone",
+    }
+    assert validate_preannotation(result)["status"] == "pass"
+
+
+def test_same_name_objects_receive_ids_and_can_be_referenced():
+    result = build_preannotation_yaml(
+        {
+            "task_type": "pick_and_place",
+            "task_instruction": "Move both blocks.",
+            "objects": [
+                {"name": "block", "color": "red", "anchor_policy": "static"},
+                {"name": "block", "color": "red", "anchor_policy": "static"},
+            ],
+            "target_sequence": ["block_1", "block_2"],
+            "expected_effects": [
+                {"object": "block_1", "effect_type": "placement_change"},
+                {"object": "block_2", "effect_type": "placement_change"},
+            ],
+        }
+    )
+
+    assert [obj["id"] for obj in result["objects"]] == ["block_1", "block_2"]
+    assert validate_preannotation(result)["status"] == "pass"
+
+
+def test_default_id_matching_name_is_exported():
+    result = build_preannotation_yaml(
+        {
+            "task_type": "pick_and_place",
+            "task_instruction": "Move the test tube rack.",
+            "objects": [
+                {
+                    "id": "test_tube_rack",
+                    "name": "test-tube rack",
+                    "color": "white",
+                    "anchor_policy": "static",
+                },
+            ],
+            "target_sequence": ["test_tube_rack"],
+            "expected_effects": [
+                {"object": "test_tube_rack", "effect_type": "placement_change"},
+            ],
+        }
+    )
+
+    assert result["objects"] == [
+        {"id": "test_tube_rack", "name": "test-tube rack", "color": "white", "anchor_policy": "static"},
+    ]
+
+
+def test_dynamic_affordance_object_cannot_be_strict_target():
+    validation = validate_preannotation(
+        {
+            "task_type": "garment_folding",
+            "task_instruction": "Fold the towel.",
+            "objects": [
+                {"name": "towel", "color": "blue", "anchor_policy": "dynamic_affordance"},
+            ],
+            "target_sequence": ["towel:corner"],
+            "expected_effects": [
+                {"object": "towel", "effect_type": "shape_change"},
+            ],
+        }
+    )
+
+    assert validation["status"] == "error"
+    assert any("not static" in error for error in validation["errors"])
+    assert any("dynamic affordance anchor" in error for error in validation["errors"])
+
+
+def test_effect_object_must_exist_and_effect_type_is_limited():
+    validation = validate_preannotation(
+        {
+            "task_type": "pick_and_place",
+            "task_instruction": "Move the apple.",
+            "objects": [
+                {"name": "apple", "color": "red", "anchor_policy": "static"},
+            ],
+            "expected_effects": [
+                {"object": "banana", "effect_type": "move_change"},
+            ],
+        }
+    )
+
+    assert validation["status"] == "error"
+    assert any("unknown object 'banana'" in error for error in validation["errors"])
+    assert any("effect_type is not supported" in error for error in validation["errors"])
+
+
+def test_metadata_passthrough_is_preserved():
+    result = build_preannotation_yaml(
+        {
+            "task_type": "pick_and_place",
+            "task_instruction": "Move the apple.",
+            "objects": [
+                {"name": "apple", "color": "red", "anchor_policy": "static"},
+            ],
+            "expected_effects": [
+                {"object": "apple", "effect_type": "placement_change"},
+            ],
+            "dataset_batch_number": 3,
+            "scene_level1": "Lab",
+            "atomic_actions": ["grasp", "place"],
+            "device_model": ["Galbot_G1"],
+        }
+    )
+
+    assert result["dataset_batch_number"] == 3
+    assert result["scene_level1"] == "Lab"
+    assert result["atomic_actions"] == ["grasp", "place"]
+    assert result["device_model"] == ["Galbot_G1"]
+
+
+def test_oracle_fields_are_removed_and_generated_yaml_can_be_loaded():
+    result = build_preannotation_yaml(
+        {
+            "task_type": "pick_and_place",
+            "task_instruction": "Move the apple.",
             "frame": 10,
             "objects": [
                 {
-                    "object_name": "apple",
+                    "name": "apple",
+                    "color": "red",
+                    "anchor_policy": "static",
                     "timestamp": 123.4,
                 }
             ],
-        }
-    )
-
-    assert "frame" not in result
-    assert "timestamp" not in result["objects"][0]
-    assert result["validation"]["status"] == "error"
-    assert any("oracle field" in error.lower() for error in result["validation"]["errors"])
-
-
-def test_dynamic_affordance_anchor_cannot_be_target():
-    validation = validate_preannotation(
-        {
-            "schema_version": "task_prior_v1_5",
-            "task_type": "garment_folding",
-            "objects": [
-                {
-                    "canonical_id": "blue_towel:main_body",
-                    "object_name": "blue towel",
-                    "object_type": "deformable",
-                    "anchor_policy": "dynamic_affordance",
-                }
-            ],
-            "target_sequence": [
-                {"canonical_id": "blue_towel:corner", "object_name": "blue towel"}
-            ],
-            "expected_effects": [],
-        }
-    )
-
-    assert validation["status"] == "error"
-    assert any("Dynamic affordance anchor" in error for error in validation["errors"])
-
-
-def test_expected_effect_object_must_exist():
-    validation = validate_preannotation(
-        {
-            "schema_version": "task_prior_v1_5",
-            "task_type": "pick_and_place",
-            "objects": [
-                {"canonical_id": "apple:main_body", "object_name": "apple"}
-            ],
-            "target_sequence": [
-                {"canonical_id": "apple:main_body", "object_name": "apple"}
-            ],
             "expected_effects": [
-                {"object": "banana:main_body", "effect_type": "placement_change"}
+                {"object": "apple", "effect_type": "placement_change"},
             ],
-        }
-    )
-
-    assert validation["status"] == "error"
-    assert any("banana:main_body" in error for error in validation["errors"])
-
-
-def test_generated_yaml_can_be_safe_loaded():
-    result = build_preannotation_yaml(
-        {
-            "task_instruction": ["Place the baozi into the steamer."],
-            "objects": ["baozi", "steamer"],
         }
     )
 
     yaml_text = ConfigGenerator.generate_yaml_string(result)
     loaded = yaml.safe_load(yaml_text)
-    assert loaded["schema_version"] == "task_prior_v1_5"
-    assert loaded["context"]["destination"] == "steamer:inner_zone"
+    assert "frame" not in loaded
+    assert "timestamp" not in loaded["objects"][0]
+    assert loaded["expected_effects"][0]["object"] == "apple:main_body"

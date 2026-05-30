@@ -552,30 +552,8 @@
         "unknown": "未知颜色",
         "none": "不适用"
       },
-      "role_options": {
-        "": "自动推断",
-        "destination": "目的地",
-        "tool": "工具",
-        "fixture": "固定环境物",
-        "manipulated_object": "机器人主动操作对象",
-        "container": "容器（旧字段）",
-        "support_surface": "支撑面（旧字段）",
-        "destination_region": "目标区域（旧字段）",
-        "labware": "实验器皿",
-        "deformable_object": "软体对象"
-      },
-      "object_type_options": {
-        "": "自动推断",
-        "rigid": "刚体",
-        "deformable": "软体",
-        "soft_rigid": "软刚体",
-        "articulated": "关节物体",
-        "unknown": "未知"
-      },
       "anchor_policy_options": {
-        "": "自动推断",
-        "none": "无局部锚点",
-        "stable_part": "稳定部件",
+        "static": "稳定锚点",
         "dynamic_affordance": "动态可供性"
       },
       "group": "动作与物品"
@@ -586,18 +564,6 @@
       "type": "target_sequence_table",
       "source_key": "objects",
       "default_anchor": "main_body",
-      "default_role": "manipulated_object",
-      "role_options": {
-        "manipulated_object": "机器人主动操作对象",
-        "target": "目标物体",
-        "container": "容器",
-        "support_surface": "支撑面",
-        "destination_region": "目标区域",
-        "tool": "工具",
-        "labware": "实验器皿",
-        "fixture": "固定环境物",
-        "deformable_object": "软体对象"
-      },
       "group": "动作与物品"
     },
     {
@@ -621,15 +587,11 @@
         "topology_change": "拓扑变化",
         "grasp_change": "抓取状态变化",
         "release_change": "释放状态变化",
+        "alignment_change": "对齐状态变化",
+        "surface_change": "表面状态变化",
+        "classification_change": "分类状态变化",
         "unknown": "未知"
       },
-      "group": "动作与物品"
-    },
-    {
-      "key": "task_steps",
-      "label": "复合任务步骤 (Task Steps，可选 YAML list)",
-      "type": "yaml_textarea",
-      "default": "",
       "group": "动作与物品"
     },
     {
