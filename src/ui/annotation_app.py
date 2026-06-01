@@ -2,11 +2,13 @@ import sys
 import os
 import json
 import time
+import uuid
 import tkinter as tk
 from tkinter import filedialog
 import streamlit as st
 import rerun as rr
 import rerun.blueprint as rrb
+import yaml
 from openai import OpenAI
 
 # 确保能找到 src
@@ -17,6 +19,7 @@ from src.core.organizer import DatasetOrganizer
 from src.core.reviewer import DatasetReviewer
 from src.core.factory import ReaderFactory
 from src.core.config_generator import ConfigGenerator
+from src.core.preannotation import build_preannotation_yaml, normalize_object_id, validate_preannotation
 from src.ui.rerun_visualizer import RerunVisualizer
 
 # 页面配置
@@ -56,6 +59,77 @@ def clean_editor_value(val):
     if isinstance(val, str) and " (" in val and val.endswith(")"):
         return val.split(" (")[0]
     return val
+
+def canonicalize_object_name(name):
+    """把物体名转成 canonical_id 前缀，如 'test tube rack' -> 'test_tube_rack'。"""
+    return normalize_object_id(name)
+
+def default_canonical_id(object_name, anchor="main_body"):
+    if not object_name:
+        return ""
+    return f"{canonicalize_object_name(object_name)}:{normalize_object_id(anchor or 'main_body')}"
+
+def anchor_from_canonical_id(canonical_id, default_anchor="main_body"):
+    """兼容旧格式，把 object_name:anchor 拆成只供用户编辑的 anchor。"""
+    if not canonical_id:
+        return default_anchor
+    canonical_id = str(canonical_id).strip()
+    if ":" in canonical_id:
+        return canonical_id.split(":", 1)[1].strip() or default_anchor
+    return canonical_id or default_anchor
+
+def build_dataset_folder_name(dataset_name, dataset_name_id):
+    if dataset_name_id in ("", None):
+        return dataset_name
+    return f"{dataset_name}_{dataset_name_id}"
+
+def ensure_dataset_export_fields(data, dataset_dir=None):
+    """补齐导出 YAML 需要的稳定元信息，并按目标格式排列字段顺序。"""
+    enriched = dict(data)
+
+    if not enriched.get("dataset_uuid"):
+        enriched["dataset_uuid"] = str(uuid.uuid4())
+
+    if "dataset_name_id" not in enriched or enriched.get("dataset_name_id") in ("", None):
+        enriched["dataset_name_id"] = 0
+
+    if dataset_dir:
+        yaml_path = os.path.join(dataset_dir, "local_dataset_info.yaml")
+        enriched["yaml_file_path"] = yaml_path
+        enriched["data_path"] = dataset_dir
+
+    ordered_keys = [
+        "dataset_name",
+        "dataset_uuid",
+        "task_type",
+        "task_instruction",
+        "dataset_batch_number",
+        "env_type",
+        "scene_level1",
+        "scene_level2",
+        "atomic_actions",
+        "objects",
+        "target_sequence",
+        "context",
+        "expected_effects",
+        "operation_platform_height",
+        "device_model",
+        "end_effector_type",
+        "task_operation_type",
+        "tele_type",
+        "dataset_name_id",
+        "yaml_file_path",
+        "data_path",
+    ]
+
+    ordered = {}
+    for key in ordered_keys:
+        if key in enriched:
+            ordered[key] = enriched[key]
+    for key, value in enriched.items():
+        if key not in ordered:
+            ordered[key] = value
+    return ordered
 
 def render_field(field, current_data, all_fields=None):
     key = field["key"]
@@ -200,19 +274,37 @@ def render_field(field, current_data, all_fields=None):
         
     elif ftype == "object_table":
         if f'table_{key}' not in st.session_state:
-            st.session_state[f'table_{key}'] = [{"object_name": "table", "color": "red"}]
+            st.session_state[f'table_{key}'] = [
+                {
+                    "id": "",
+                    "object_name": "table",
+                    "color": "none",
+                    "anchor_policy": "static",
+                }
+            ]
             
         name_opts = field.get("name_options", {})
         color_opts = field.get("color_options", {})
+        anchor_policy_opts = field.get("anchor_policy_options", {
+            "static": "稳定锚点",
+            "dynamic_affordance": "动态可供性",
+        })
         name_display = [f"{k} ({v})" for k, v in name_opts.items()]
         color_display = [f"{k} ({v})" for k, v in color_opts.items()]
+        anchor_policy_display = list(anchor_policy_opts.keys())
         
         edited = st.data_editor(
             st.session_state[f'table_{key}'],
             num_rows="dynamic",
             column_config={
+                "id": st.column_config.TextColumn(
+                    "对象 ID（同名对象时必填）",
+                    help="普通对象留空自动按名称生成；同名对象请人工填写稳定 ID，例如 left_block、right_block。",
+                    required=False,
+                ),
                 "object_name": st.column_config.SelectboxColumn("物品名称", options=name_display, required=True),
-                "color": st.column_config.SelectboxColumn("颜色", options=color_display, required=True)
+                "color": st.column_config.SelectboxColumn("颜色", options=color_display, required=True),
+                "anchor_policy": st.column_config.SelectboxColumn("anchor_policy", options=anchor_policy_display, default="static", required=True),
             },
             width="stretch"
         )
@@ -220,11 +312,208 @@ def render_field(field, current_data, all_fields=None):
         cleaned = []
         for row in edited:
             if row.get("object_name"):
+                object_name = clean_editor_value(row["object_name"])
+                anchor_policy = clean_editor_value(row.get("anchor_policy")) or "static"
                 cleaned.append({
-                    "object_name": clean_editor_value(row["object_name"]),
-                    "color": clean_editor_value(row["color"])
+                    "id": str(row.get("id") or "").strip(),
+                    "object_name": object_name,
+                    "color": clean_editor_value(row.get("color", "unknown")),
+                    "anchor_policy": anchor_policy,
                 })
+                if not cleaned[-1]["id"]:
+                    cleaned[-1].pop("id")
         return cleaned
+
+    elif ftype == "target_sequence_table":
+        table_key = f"table_{key}"
+        source_key = field.get("source_key", "objects")
+        source_objects = current_data.get(source_key, [])
+        source_rows = [
+            obj for obj in source_objects
+            if obj.get("object_name") and obj.get("anchor_policy") == "static"
+        ]
+        source_names = [obj.get("id") or obj.get("object_name") for obj in source_rows]
+
+        default_anchor = field.get("default_anchor", "main_body")
+
+        if not st.session_state.get(table_key):
+            st.session_state[table_key] = [{"object_name": None, "anchor": default_anchor}]
+        else:
+            migrated_rows = []
+            for row in st.session_state[table_key]:
+                migrated = dict(row)
+                if "anchor" not in migrated:
+                    migrated["anchor"] = anchor_from_canonical_id(
+                        migrated.get("canonical_id"),
+                        default_anchor,
+                    )
+                migrated.pop("canonical_id", None)
+                migrated_rows.append(migrated)
+            st.session_state[table_key] = migrated_rows
+
+        existing_names = [
+            row.get("object_name")
+            for row in st.session_state[table_key]
+            if row.get("object_name")
+        ]
+        object_options = []
+        for name in source_names + existing_names:
+            if name and name not in object_options:
+                object_options.append(name)
+
+        st.caption("只填写机器人主动操作的 static 对象；锚点留空时默认 main_body。")
+
+        column_config = {
+            "anchor": st.column_config.TextColumn(
+                "锚点 anchor",
+                help="只填写冒号后面的锚点，例如 main_body；不填默认 main_body，导出时自动拼成 object_name:main_body。",
+                required=False,
+                default=default_anchor,
+            ),
+            "object_name": st.column_config.SelectboxColumn(
+                "目标物体",
+                options=object_options,
+                required=True,
+            ) if object_options else st.column_config.TextColumn("目标物体", required=True),
+        }
+        edited = st.data_editor(
+            st.session_state[table_key],
+            num_rows="dynamic",
+            column_config=column_config,
+            width="stretch",
+            key=f"editor_{key}",
+        )
+
+        cleaned = []
+        for row in edited:
+            object_name = clean_editor_value(row.get("object_name", ""))
+            if not object_name:
+                continue
+            anchor = anchor_from_canonical_id(row.get("anchor"), default_anchor)
+            canonical_id = default_canonical_id(object_name, anchor)
+            cleaned.append({
+                "anchor": anchor,
+                "canonical_id": canonical_id,
+                "object_name": object_name,
+            })
+        return [
+            {k: v for k, v in row.items() if k != "anchor"}
+            for row in cleaned
+        ]
+
+    elif ftype == "context_fields":
+        table_key = f"table_{key}"
+        source_key = field.get("source_key", "objects")
+        source_objects = current_data.get(source_key, [])
+        object_names = [obj.get("id") or obj.get("object_name") for obj in source_objects if obj.get("object_name")]
+        if not st.session_state.get(table_key):
+            st.session_state[table_key] = [
+                {"context_key": "container", "object": None, "anchor": ""},
+                {"context_key": "destination", "object": None, "anchor": ""},
+                {"context_key": "support_surface", "object": None, "anchor": ""},
+            ]
+
+        st.markdown(f"**{label}**")
+        st.caption("按需填写被动环境关系，可新增自定义字段；锚点留空时默认 main_body。")
+
+        edited = st.data_editor(
+            st.session_state[table_key],
+            num_rows="dynamic",
+            column_config={
+                "context_key": st.column_config.TextColumn("关系字段", required=True),
+                "object": st.column_config.SelectboxColumn("对象", options=object_names, required=True)
+                if object_names else st.column_config.TextColumn("对象", required=True),
+                "anchor": st.column_config.TextColumn(
+                    "锚点 anchor（可选）",
+                    help="留空默认 main_body。",
+                    required=False,
+                ),
+            },
+            width="stretch",
+            key=f"editor_{key}",
+        )
+
+        context = {}
+        for row in edited:
+            context_key = str(row.get("context_key") or "").strip()
+            object_name = clean_editor_value(row.get("object"))
+            if context_key and object_name:
+                context[context_key] = default_canonical_id(
+                    object_name,
+                    row.get("anchor") or "main_body",
+                )
+        return context
+
+    elif ftype == "expected_effects_table":
+        table_key = f"table_{key}"
+        if not st.session_state.get(table_key):
+            st.session_state[table_key] = [
+                {"object": None, "effect_type": None, "from_state": "", "to_state": ""}
+            ]
+
+        source_key = field.get("source_key", "objects")
+        source_objects = current_data.get(source_key, [])
+        object_options = [obj.get("id") or obj.get("object_name") for obj in source_objects if obj.get("object_name")]
+        effect_options = list(field.get("effect_options", {}).keys())
+
+        st.caption("填写任务核心结果；对象可引用 static 或 dynamic_affordance，未指定锚点时默认 main_body。")
+        edited = st.data_editor(
+            st.session_state[table_key],
+            num_rows="dynamic",
+            column_config={
+                "object": st.column_config.SelectboxColumn("对象", options=object_options, required=True)
+                if object_options else st.column_config.TextColumn("对象", required=True),
+                "effect_type": st.column_config.SelectboxColumn(
+                    "效果类型",
+                    options=effect_options,
+                    required=True,
+                ) if effect_options else st.column_config.TextColumn("效果类型", required=True),
+                "anchor": st.column_config.TextColumn(
+                    "锚点 anchor（可选）",
+                    help="留空默认 main_body。",
+                    required=False,
+                ),
+                "from_state": st.column_config.TextColumn("from_state", required=False),
+                "to_state": st.column_config.TextColumn("to_state", required=False),
+            },
+            width="stretch",
+            key=f"editor_{key}",
+        )
+
+        cleaned = []
+        for row in edited:
+            if not row.get("object") or not row.get("effect_type"):
+                continue
+            cleaned.append({
+                "object": default_canonical_id(
+                    clean_editor_value(row.get("object")),
+                    row.get("anchor") or "main_body",
+                ),
+                "effect_type": row.get("effect_type"),
+                "from_state": row.get("from_state", ""),
+                "to_state": row.get("to_state", ""),
+            })
+        return cleaned
+
+    elif ftype == "yaml_textarea":
+        state_key = f"yaml_textarea_{key}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = field.get("default", "")
+        text = st.text_area(label, value=st.session_state[state_key], height=180)
+        st.session_state[state_key] = text
+        if not text.strip():
+            return []
+        try:
+            parsed = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            st.error(f"{label} YAML 解析失败: {exc}")
+            return []
+        if parsed is None:
+            return []
+        if not isinstance(parsed, list):
+            st.error(f"{label} 必须是 YAML list。")
+            return []
+        return parsed
 
 def setup_comparison_layout(sample_names, cameras):
     columns = []
@@ -567,7 +856,14 @@ def main():
             if not collected_data.get("dataset_name") or collected_data.get("dataset_name") == st.session_state.get("prefix_dataset_name", ""):
                 st.error("请完整填写「数据集名称 (自动拼接)」中的动作名称（动词_名词）！")
             else:
-                st.session_state['preview_yaml_data'] = collected_data
+                preview_seed = ensure_dataset_export_fields(build_preannotation_yaml(collected_data))
+                st.session_state['preview_yaml_validation'] = validate_preannotation(preview_seed)
+                folder_name = build_dataset_folder_name(
+                    preview_seed["dataset_name"],
+                    preview_seed.get("dataset_name_id")
+                )
+                preview_dir = os.path.join(os.path.dirname(os.path.normpath(target_dir)), folder_name)
+                st.session_state['preview_yaml_data'] = ensure_dataset_export_fields(preview_seed, preview_dir)
                 st.session_state['show_preview'] = True
 
         if st.session_state.get('show_preview', False):
@@ -576,29 +872,43 @@ def main():
 
             st.info("👇 请二次核对以下将要生成的 YAML 内容：")
             st.code(yaml_str, language="yaml")
+            validation = st.session_state.get('preview_yaml_validation', validate_preannotation(preview_data))
+            has_validation_error = validation.get("status") == "error"
+            if validation.get("errors"):
+                st.error("校验失败，当前 YAML 不能保存：\n\n" + "\n".join(f"- {e}" for e in validation["errors"]))
+            if validation.get("warnings"):
+                st.warning("校验发现需要复核的问题：\n\n" + "\n".join(f"- {w}" for w in validation["warnings"]))
+            elif validation.get("status") == "pass":
+                st.success("预标注 YAML 校验通过。")
 
             final_dataset_name = preview_data["dataset_name"]
             
             if has_old_config:
                 st.warning("⚠️ 发现当前目录已存在旧的配置文件，继续生成将会 **覆盖** 这些文件！")
             
-            st.warning(f"⚠️ 确认保存后，当前数据文件夹将被重命名为：\n`{final_dataset_name}`")
+            final_folder_name = build_dataset_folder_name(
+                final_dataset_name,
+                preview_data.get("dataset_name_id")
+            )
+            st.warning(f"⚠️ 确认保存后，当前数据文件夹将被重命名为：\n`{final_folder_name}`")
 
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
-                if st.button("🚨 确认无误，生成文件并重命名", type="primary"):
+                if st.button("🚨 确认无误，生成文件并重命名", type="primary", disabled=has_validation_error):
                     target_dir_norm = os.path.normpath(target_dir)
                     parent_dir = os.path.dirname(target_dir_norm)
                     
                     # 1. 检查重名并分配安全的新名字
-                    new_target_dir = os.path.join(parent_dir, final_dataset_name)
+                    final_folder_name = build_dataset_folder_name(
+                        final_dataset_name,
+                        preview_data.get("dataset_name_id")
+                    )
+                    new_target_dir = os.path.join(parent_dir, final_folder_name)
                     if os.path.exists(new_target_dir) and target_dir_norm != new_target_dir:
                         timestamp = time.strftime("%Y%m%d_%H%M%S")
-                        final_dataset_name = f"{final_dataset_name}_{timestamp}"
-                        new_target_dir = os.path.join(parent_dir, final_dataset_name)
-                        # 同步更新 YAML 中的数据集名称
-                        preview_data["dataset_name"] = final_dataset_name
-                        st.toast(f"检测到同名文件夹，自动附加时间戳：{final_dataset_name}")
+                        final_folder_name = f"{final_folder_name}_{timestamp}"
+                        new_target_dir = os.path.join(parent_dir, final_folder_name)
+                        st.toast(f"检测到同名文件夹，自动附加时间戳：{final_folder_name}")
 
                     try:
                         # 2. 优先重命名文件夹 (避免在旧路径下生成新文件后改名失败，导致文件散落)
@@ -607,9 +917,10 @@ def main():
                             st.session_state['dataset_path'] = new_target_dir
 
                         # 3. 在新文件夹中生成并保存 YAML (引入了防覆盖的备份逻辑，见后文 ConfigGenerator 修改)
+                        preview_data = ensure_dataset_export_fields(preview_data, new_target_dir)
                         save_path = ConfigGenerator.analyze_and_save(preview_data, new_target_dir, filename="local_dataset_info.yaml")
 
-                        st.success(f"🎉 标注文件已保存！文件夹最终名称为 `{final_dataset_name}`。")
+                        st.success(f"🎉 标注文件已保存！文件夹最终名称为 `{final_folder_name}`。")
 
                         # 清除预览状态
                         st.session_state['show_preview'] = False

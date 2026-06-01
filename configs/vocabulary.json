@@ -7,6 +7,19 @@
       "group": "基本信息"
     },
     {
+      "key": "task_type",
+      "label": "任务类型",
+      "type": "selectbox",
+      "options": {
+        "pick_and_place": "抓取与放置",
+        "container_placement": "放入容器",
+        "garment_folding": "衣物/软体折叠",
+        "labware_rearrangement": "实验器皿重排",
+        "compound_task": "复合任务"
+      },
+      "group": "基本信息"
+    },
+    {
       "key": "task_instruction",
       "label": "Task Instruction (任务指令, 每行一条)",
       "type": "textarea",
@@ -211,7 +224,7 @@
       "label": "操作物品 (Objects)",
       "type": "object_table",
       "name_options": {
-        "table": "桌子",
+        "table": "桌面/桌子",
         "sofa": "沙发",
         "counter": "台面",
         "cupboard": "橱柜",
@@ -231,6 +244,8 @@
         "soup spoon": "汤勺",
         "stirring spoon": "搅拌勺",
         "double-ear steamer": "双耳蒸锅",
+        "steamer": "蒸笼",
+        "steamer lid": "蒸笼盖",
         "frying pan (egg pan)": "煎锅（蛋锅）",
         "wok": "炒锅",
         "glass cup": "玻璃杯",
@@ -484,6 +499,7 @@
         "test tube brush": "试管刷",
         "measuring cup": "量杯",
         "beaker": "烧杯",
+        "Erlenmeyer flask": "锥形瓶",
         "grains of sand": "沙粒",
         "white powder": "白色粉末",
         "black solid": "黑色固体",
@@ -508,12 +524,14 @@
         "lipstick": "口红",
         "water bottle": "水瓶",
         "rice": "大米",
-        "steamed bun": "馒头",
+        "baozi": "包子",
+        "steamed bun": "包子/馒头",
         "instant noodles": "方便面",
         "salad dressing": "沙拉酱",
         "blueberry sauce": "蓝莓酱",
         "socks": "袜子",
-        "underwear": "内裤"
+        "underwear": "内裤",
+        "pot lid": "锅盖"
       },
       "color_options": {
         "red": "红色",
@@ -533,6 +551,46 @@
         "other": "其他颜色",
         "unknown": "未知颜色",
         "none": "不适用"
+      },
+      "anchor_policy_options": {
+        "static": "稳定锚点",
+        "dynamic_affordance": "动态可供性"
+      },
+      "group": "动作与物品"
+    },
+    {
+      "key": "target_sequence",
+      "label": "目标交互顺序 (Target Sequence)",
+      "type": "target_sequence_table",
+      "source_key": "objects",
+      "default_anchor": "main_body",
+      "group": "动作与物品"
+    },
+    {
+      "key": "context",
+      "label": "上下文对象 (Context)",
+      "type": "context_fields",
+      "source_key": "objects",
+      "group": "动作与物品"
+    },
+    {
+      "key": "expected_effects",
+      "label": "任务级预期效果 (Expected Effects)",
+      "type": "expected_effects_table",
+      "source_key": "objects",
+      "effect_options": {
+        "placement_change": "位置变化",
+        "containment_change": "容器内外状态变化",
+        "closing_change": "关闭状态变化",
+        "opening_change": "打开状态变化",
+        "shape_change": "形状变化",
+        "topology_change": "拓扑变化",
+        "grasp_change": "抓取状态变化",
+        "release_change": "释放状态变化",
+        "alignment_change": "对齐状态变化",
+        "surface_change": "表面状态变化",
+        "classification_change": "分类状态变化",
+        "unknown": "未知"
       },
       "group": "动作与物品"
     },
@@ -619,6 +677,17 @@
       "default": 0,
       "min_value": 0,
       "max_value": 100,
+      "step": 1,
+      "format": "%d",
+      "group": "基本信息"
+    },
+    {
+      "key": "dataset_name_id",
+      "label": "数据集名称编号",
+      "type": "number",
+      "default": 0,
+      "min_value": 0,
+      "max_value": 9999,
       "step": 1,
       "format": "%d",
       "group": "基本信息"
