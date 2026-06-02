@@ -454,7 +454,9 @@ def render_field(field, current_data, all_fields=None):
         source_key = field.get("source_key", "objects")
         source_objects = current_data.get(source_key, [])
         object_options = [obj.get("id") or obj.get("object_name") for obj in source_objects if obj.get("object_name")]
-        effect_options = list(field.get("effect_options", {}).keys())
+        effect_options_dict = field.get("effect_options", {})
+        effect_options = list(effect_options_dict.keys())
+        effect_format_func = lambda x, d=effect_options_dict: f"{x} ({d[x]})" if d.get(x) else x
 
         st.caption("填写任务核心结果；对象可引用 static 或 dynamic_affordance，未指定锚点时默认 main_body。")
         edited = st.data_editor(
@@ -466,6 +468,7 @@ def render_field(field, current_data, all_fields=None):
                 "effect_type": st.column_config.SelectboxColumn(
                     "效果类型",
                     options=effect_options,
+                    format_func=effect_format_func,
                     required=True,
                 ) if effect_options else st.column_config.TextColumn("效果类型", required=True),
                 "anchor": st.column_config.TextColumn(
